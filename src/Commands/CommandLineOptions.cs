@@ -38,6 +38,11 @@ public static class CommandLineOptions
     public static Option<bool> IgnoreControllers { get; } = CreateIgnoreControllersOption();
     
     /// <summary>
+    /// Option for enabling enhanced dependency injection detection
+    /// </summary>
+    public static Option<bool> EnhancedDiDetection { get; } = CreateEnhancedDiDetectionOption();
+    
+    /// <summary>
     /// Creates and configures the root command with all options
     /// </summary>
     /// <returns>Configured root command</returns>
@@ -51,6 +56,7 @@ public static class CommandLineOptions
         rootCommand.AddOption(IgnoreMigrations);
         rootCommand.AddOption(IgnoreAzureFunctions);
         rootCommand.AddOption(IgnoreControllers);
+        rootCommand.AddOption(EnhancedDiDetection);
         
         return rootCommand;
     }
@@ -157,6 +163,17 @@ public static class CommandLineOptions
             description: "Ignore Controller files during analysis");
         
         option.AddAlias("-ic");
+        
+        return option;
+    }
+    
+    private static Option<bool> CreateEnhancedDiDetectionOption()
+    {
+        var option = new Option<bool>(
+            name: "--enhanced-di-detection",
+            description: "Enable enhanced dependency injection detection to better identify classes used only in DI containers");
+        
+        option.AddAlias("-ed");
         
         return option;
     }

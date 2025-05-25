@@ -42,11 +42,14 @@ deadsharp -p /path/to/your/project --ignore-azure-functions
 # Ignore Controllers during analysis
 deadsharp -p /path/to/your/project --ignore-controllers
 
+# Enable enhanced dependency injection detection
+deadsharp -p /path/to/your/project --enhanced-di-detection
+
 # Combine multiple ignore options
-deadsharp -p /path/to/your/project -v --ignore-tests --ignore-migrations --ignore-controllers
+deadsharp -p /path/to/your/project -v --ignore-tests --ignore-migrations --ignore-controllers --enhanced-di-detection
 
 # Use short aliases
-deadsharp -p /path/to/your/project -v -i -im -iaf -ic
+deadsharp -p /path/to/your/project -v -i -im -iaf -ic -ed
 ```
 
 ### Supported Input Types
@@ -118,6 +121,70 @@ The tool detects Controller files based on:
 - **Filename patterns**: ending with "Controller.cs"
 - **Content patterns**: inheriting from "Controller", "ControllerBase", or "ApiController", containing MVC attributes like "[ApiController]", "[HttpGet]", etc.
 
+#### Enhanced Dependency Injection Detection (`--enhanced-di-detection` / `-ed`)
+
+One of the most common false positives in dead code analysis occurs when classes are only used through dependency injection (DI) containers. These classes may appear unused because they're only referenced in DI registration code and injected via interfaces.
+
+Use the `--enhanced-di-detection` option to enable advanced detection of dependency injection patterns:
+
+```bash
+deadsharp -p /path/to/project --enhanced-di-detection
+```
+
+This feature detects classes used in various DI scenarios:
+
+**DI Container Registration Patterns:**
+- `services.AddScoped<IService, Service>()`
+- `services.AddTransient<Service>()`
+- `services.AddSingleton(typeof(Service))`
+- `container.Register<IService, Service>()`
+- `kernel.Bind<IService>().To<Service>()`
+- `For<IService>().Use<Service>()` (StructureMap)
+- `services.Configure<OptionsClass>()`
+
+**Service Resolution Patterns:**
+- `serviceProvider.GetService<Service>()`
+- `serviceProvider.GetRequiredService<Service>()`
+- `container.Resolve<Service>()`
+
+**Constructor Injection:**
+- Classes injected as constructor parameters
+- Automatic detection of DI constructor patterns
+
+**Attribute-based Injection:**
+- `[FromServices]` parameters in controller actions
+- `[Inject]` and `[Dependency]` attributes
+- Property injection patterns
+
+**Generic Type Constraints:**
+- `where T : IService` constraints
+- `typeof(Service)` expressions
+
+**Example scenario:**
+```csharp
+// This class might appear as "dead code" without enhanced DI detection
+public class EmailService : IEmailService
+{
+    public void SendEmail(string to, string subject, string body) { /* implementation */ }
+}
+
+// But it's registered in DI container
+services.AddScoped<IEmailService, EmailService>();
+
+// And injected via constructor
+public class UserController : ControllerBase
+{
+    private readonly IEmailService _emailService;
+    
+    public UserController(IEmailService emailService) // EmailService is used here!
+    {
+        _emailService = emailService;
+    }
+}
+```
+
+With `--enhanced-di-detection`, the tool will correctly identify that `EmailService` is used through the DI container and won't mark it as dead code.
+
 #### Combining Ignore Options
 
 You can combine multiple ignore options to fine-tune your analysis:
@@ -128,6 +195,9 @@ deadsharp -p /path/to/project --ignore-tests --ignore-migrations --ignore-azure-
 
 # Using short aliases
 deadsharp -p /path/to/project -i -im -iaf -ic
+
+# Include enhanced DI detection for better accuracy
+deadsharp -p /path/to/project --ignore-tests --ignore-controllers --enhanced-di-detection
 ```
 
 ## Features
@@ -142,6 +212,7 @@ deadsharp -p /path/to/project -i -im -iaf -ic
   - ✅ Ignore database migrations (`--ignore-migrations`)
   - ✅ Ignore Azure Functions (`--ignore-azure-functions`)
   - ✅ Ignore Controllers (`--ignore-controllers`)
+- ✅ Enhanced dependency injection detection (`--enhanced-di-detection`)
 - ✅ Short aliases for all options
 - ✅ Modular and extensible architecture
 - ✅ Both Roslyn-based semantic analysis and fallback regex analysis

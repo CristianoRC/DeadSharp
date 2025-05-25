@@ -13,17 +13,19 @@ public class CodeAnalyzer
     private readonly bool _ignoreMigrations;
     private readonly bool _ignoreAzureFunctions;
     private readonly bool _ignoreControllers;
+    private readonly bool _enhancedDiDetection;
     private readonly RoslynAnalyzer _roslynAnalyzer;
     
     public CodeAnalyzer(bool verbose = false, bool ignoreTests = false, bool ignoreMigrations = false, 
-        bool ignoreAzureFunctions = false, bool ignoreControllers = false)
+        bool ignoreAzureFunctions = false, bool ignoreControllers = false, bool enhancedDiDetection = false)
     {
         _verbose = verbose;
         _ignoreTests = ignoreTests;
         _ignoreMigrations = ignoreMigrations;
         _ignoreAzureFunctions = ignoreAzureFunctions;
         _ignoreControllers = ignoreControllers;
-        _roslynAnalyzer = new RoslynAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers);
+        _enhancedDiDetection = enhancedDiDetection;
+        _roslynAnalyzer = new RoslynAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection);
     }
     
     /// <summary>
@@ -851,10 +853,33 @@ public class CodeAnalyzer
                 $@"\b{Regex.Escape(className)}\.",          // static access
                 $@"I{Regex.Escape(className)}\b",           // Interface reference (IClassName)
                 $@"{Regex.Escape(className)}\s*>",          // Generic constraint
-                // Dependency Injection patterns
-                $@"Add\w*<.*{Regex.Escape(className)}>",    // services.AddScoped<IService, Service>()
-                $@"Register.*{Regex.Escape(className)}",     // container.Register<Service>()
-                $@"Bind.*{Regex.Escape(className)}",        // kernel.Bind<Service>()
+                // Enhanced Dependency Injection patterns
+                $@"Add\w*<[^,>]*,\s*{Regex.Escape(className)}\s*>",    // services.AddScoped<IService, Service>()
+                $@"Add\w*<{Regex.Escape(className)}\s*>",              // services.AddScoped<Service>()
+                $@"Add\w*\(\s*typeof\s*\(\s*{Regex.Escape(className)}\s*\)",  // services.AddScoped(typeof(Service))
+                $@"Register\w*<[^,>]*,\s*{Regex.Escape(className)}\s*>",       // container.Register<IService, Service>()
+                $@"Register\w*<{Regex.Escape(className)}\s*>",                 // container.Register<Service>()
+                $@"Register\w*\(\s*typeof\s*\(\s*{Regex.Escape(className)}\s*\)",  // container.Register(typeof(Service))
+                $@"Bind\w*<[^,>]*>\s*\.To\w*<{Regex.Escape(className)}\s*>",   // kernel.Bind<IService>().To<Service>()
+                $@"Bind\w*<{Regex.Escape(className)}\s*>",                     // kernel.Bind<Service>()
+                $@"For\w*<[^,>]*>\s*\.Use\w*<{Regex.Escape(className)}\s*>",   // StructureMap: For<IService>().Use<Service>()
+                $@"Configure\w*<{Regex.Escape(className)}\s*>",                // services.Configure<Options>()
+                $@"TryAdd\w*<[^,>]*,\s*{Regex.Escape(className)}\s*>",        // services.TryAddScoped<IService, Service>()
+                $@"TryAdd\w*<{Regex.Escape(className)}\s*>",                   // services.TryAddScoped<Service>()
+                // Generic type constraints and parameters
+                $@"where\s+\w+\s*:\s*[^,]*{Regex.Escape(className)}",          // where T : IService
+                $@"typeof\s*\(\s*{Regex.Escape(className)}\s*\)",              // typeof(Service)
+                // Constructor injection patterns
+                $@"\(\s*{Regex.Escape(className)}\s+\w+",                      // constructor parameter
+                // Method injection patterns
+                $@"GetService<{Regex.Escape(className)}\s*>",                  // serviceProvider.GetService<Service>()
+                $@"GetRequiredService<{Regex.Escape(className)}\s*>",          // serviceProvider.GetRequiredService<Service>()
+                $@"GetServices<{Regex.Escape(className)}\s*>",                 // serviceProvider.GetServices<Service>()
+                $@"Resolve<{Regex.Escape(className)}\s*>",                     // container.Resolve<Service>()
+                $@"ResolveAll<{Regex.Escape(className)}\s*>",                  // container.ResolveAll<Service>()
+                // Attribute-based injection
+                $@"\[Inject\].*{Regex.Escape(className)}\s+\w+",               // [Inject] Service service
+                $@"\[Dependency\].*{Regex.Escape(className)}\s+\w+",           // [Dependency] Service service
             };
             
             foreach (var pattern in classUsagePatterns)
@@ -874,6 +899,11 @@ public class CodeAnalyzer
                                 Console.WriteLine($"    Interface {className} is used, marking implementation {implementation} as USED");
                             }
                         }
+                    }
+                    
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Class {className} marked as USED (pattern matched: {pattern})");
                     }
                     break;
                 }
@@ -1282,10 +1312,33 @@ public class CodeAnalyzer
                 $@"\b{Regex.Escape(className)}\.",          // static access
                 $@"I{Regex.Escape(className)}\b",           // Interface reference (IClassName)
                 $@"{Regex.Escape(className)}\s*>",          // Generic constraint
-                // Dependency Injection patterns
-                $@"Add\w*<.*{Regex.Escape(className)}>",    // services.AddScoped<IService, Service>()
-                $@"Register.*{Regex.Escape(className)}",     // container.Register<Service>()
-                $@"Bind.*{Regex.Escape(className)}",        // kernel.Bind<Service>()
+                // Enhanced Dependency Injection patterns
+                $@"Add\w*<[^,>]*,\s*{Regex.Escape(className)}\s*>",    // services.AddScoped<IService, Service>()
+                $@"Add\w*<{Regex.Escape(className)}\s*>",              // services.AddScoped<Service>()
+                $@"Add\w*\(\s*typeof\s*\(\s*{Regex.Escape(className)}\s*\)",  // services.AddScoped(typeof(Service))
+                $@"Register\w*<[^,>]*,\s*{Regex.Escape(className)}\s*>",       // container.Register<IService, Service>()
+                $@"Register\w*<{Regex.Escape(className)}\s*>",                 // container.Register<Service>()
+                $@"Register\w*\(\s*typeof\s*\(\s*{Regex.Escape(className)}\s*\)",  // container.Register(typeof(Service))
+                $@"Bind\w*<[^,>]*>\s*\.To\w*<{Regex.Escape(className)}\s*>",   // kernel.Bind<IService>().To<Service>()
+                $@"Bind\w*<{Regex.Escape(className)}\s*>",                     // kernel.Bind<Service>()
+                $@"For\w*<[^,>]*>\s*\.Use\w*<{Regex.Escape(className)}\s*>",   // StructureMap: For<IService>().Use<Service>()
+                $@"Configure\w*<{Regex.Escape(className)}\s*>",                // services.Configure<Options>()
+                $@"TryAdd\w*<[^,>]*,\s*{Regex.Escape(className)}\s*>",        // services.TryAddScoped<IService, Service>()
+                $@"TryAdd\w*<{Regex.Escape(className)}\s*>",                   // services.TryAddScoped<Service>()
+                // Generic type constraints and parameters
+                $@"where\s+\w+\s*:\s*[^,]*{Regex.Escape(className)}",          // where T : IService
+                $@"typeof\s*\(\s*{Regex.Escape(className)}\s*\)",              // typeof(Service)
+                // Constructor injection patterns
+                $@"\(\s*{Regex.Escape(className)}\s+\w+",                      // constructor parameter
+                // Method injection patterns
+                $@"GetService<{Regex.Escape(className)}\s*>",                  // serviceProvider.GetService<Service>()
+                $@"GetRequiredService<{Regex.Escape(className)}\s*>",          // serviceProvider.GetRequiredService<Service>()
+                $@"GetServices<{Regex.Escape(className)}\s*>",                 // serviceProvider.GetServices<Service>()
+                $@"Resolve<{Regex.Escape(className)}\s*>",                     // container.Resolve<Service>()
+                $@"ResolveAll<{Regex.Escape(className)}\s*>",                  // container.ResolveAll<Service>()
+                // Attribute-based injection
+                $@"\[Inject\].*{Regex.Escape(className)}\s+\w+",               // [Inject] Service service
+                $@"\[Dependency\].*{Regex.Escape(className)}\s+\w+",           // [Dependency] Service service
             };
             
             foreach (var pattern in classUsagePatterns)
@@ -1310,7 +1363,7 @@ public class CodeAnalyzer
                     
                     if (_verbose)
                     {
-                        Console.WriteLine($"    Class {className} marked as USED (cross-project)");
+                        Console.WriteLine($"    Class {className} marked as USED (pattern matched: {pattern})");
                     }
                     break;
                 }

@@ -16,16 +16,18 @@ public class RoslynAnalyzer
     private readonly bool _ignoreMigrations;
     private readonly bool _ignoreAzureFunctions;
     private readonly bool _ignoreControllers;
+    private readonly bool _enhancedDiDetection;
     private static bool _msbuildRegistered = false;
 
     public RoslynAnalyzer(bool verbose = false, bool ignoreTests = false, bool ignoreMigrations = false, 
-        bool ignoreAzureFunctions = false, bool ignoreControllers = false)
+        bool ignoreAzureFunctions = false, bool ignoreControllers = false, bool enhancedDiDetection = false)
     {
         _verbose = verbose;
         _ignoreTests = ignoreTests;
         _ignoreMigrations = ignoreMigrations;
         _ignoreAzureFunctions = ignoreAzureFunctions;
         _ignoreControllers = ignoreControllers;
+        _enhancedDiDetection = enhancedDiDetection;
         EnsureMSBuildRegistered();
     }
 
@@ -176,7 +178,7 @@ public class RoslynAnalyzer
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
             var root = await syntaxTree.GetRootAsync();
 
-            var fileResult = AnalyzeDocument(document, semanticModel, root, allSymbols, usedSymbols);
+            var fileResult = await AnalyzeDocument(document, semanticModel, root, allSymbols, usedSymbols);
             result.FileResults.Add(fileResult);
 
             result.TotalMethods += fileResult.MethodCount;
@@ -237,7 +239,7 @@ public class RoslynAnalyzer
         return symbols;
     }
 
-    private FileAnalysisResult AnalyzeDocument(
+    private async Task<FileAnalysisResult> AnalyzeDocument(
         Document document, 
         SemanticModel semanticModel, 
         SyntaxNode root,
@@ -321,6 +323,12 @@ public class RoslynAnalyzer
                 }
             }
 
+            // Enhanced Dependency Injection detection
+            if (_enhancedDiDetection)
+            {
+                await AnalyzeDependencyInjectionPatterns(root, semanticModel, allSymbols, usedSymbols, result);
+            }
+
             if (_verbose)
             {
                 Console.WriteLine($"Analyzed {result.RelativePath}: {result.ClassCount} classes, {result.MethodCount} methods");
@@ -336,6 +344,158 @@ public class RoslynAnalyzer
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Analyzes dependency injection patterns to mark classes as used even when only registered in DI containers
+    /// </summary>
+    private async Task AnalyzeDependencyInjectionPatterns(
+        SyntaxNode root, 
+        SemanticModel semanticModel, 
+        HashSet<ISymbol> allSymbols, 
+        HashSet<ISymbol> usedSymbols,
+        FileAnalysisResult result)
+    {
+        // Find all invocation expressions that might be DI registrations
+        var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+        
+        foreach (var invocation in invocations)
+        {
+            var memberAccess = invocation.Expression as MemberAccessExpressionSyntax;
+            if (memberAccess == null) continue;
+
+            var methodName = memberAccess.Name.Identifier.ValueText;
+            
+            // Check for common DI registration method names
+            var diRegistrationMethods = new[]
+            {
+                "AddScoped", "AddTransient", "AddSingleton", "AddHostedService",
+                "TryAddScoped", "TryAddTransient", "TryAddSingleton",
+                "Register", "RegisterType", "RegisterInstance", "RegisterSingleton",
+                "Bind", "BindToConstant", "BindToMethod", "BindToSelf",
+                "For", "Use", "Configure", "ConfigureOptions"
+            };
+
+            if (!diRegistrationMethods.Contains(methodName)) continue;
+
+            // Analyze generic type arguments
+            if (memberAccess.Name is GenericNameSyntax genericName)
+            {
+                foreach (var typeArg in genericName.TypeArgumentList.Arguments)
+                {
+                    var typeSymbol = semanticModel.GetSymbolInfo(typeArg).Symbol;
+                    if (typeSymbol != null && allSymbols.Contains(typeSymbol))
+                    {
+                        usedSymbols.Add(typeSymbol);
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"    DI Registration: {typeSymbol.Name} marked as USED via {methodName}<{typeArg}> in {result.RelativePath}");
+                        }
+                    }
+                }
+            }
+
+            // Analyze typeof() expressions in method arguments
+            foreach (var argument in invocation.ArgumentList.Arguments)
+            {
+                var typeofExpressions = argument.DescendantNodes().OfType<TypeOfExpressionSyntax>();
+                foreach (var typeofExpr in typeofExpressions)
+                {
+                    var typeSymbol = semanticModel.GetSymbolInfo(typeofExpr.Type).Symbol;
+                    if (typeSymbol != null && allSymbols.Contains(typeSymbol))
+                    {
+                        usedSymbols.Add(typeSymbol);
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"    DI Registration: {typeSymbol.Name} marked as USED via typeof() in {methodName} in {result.RelativePath}");
+                        }
+                    }
+                }
+            }
+        }
+
+        // Find constructor parameters that might indicate DI usage
+        var constructors = root.DescendantNodes().OfType<ConstructorDeclarationSyntax>();
+        foreach (var constructor in constructors)
+        {
+            foreach (var parameter in constructor.ParameterList.Parameters)
+            {
+                if (parameter.Type != null)
+                {
+                    var parameterTypeSymbol = semanticModel.GetSymbolInfo(parameter.Type).Symbol;
+                    if (parameterTypeSymbol != null && allSymbols.Contains(parameterTypeSymbol))
+                    {
+                        usedSymbols.Add(parameterTypeSymbol);
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"    Constructor Injection: {parameterTypeSymbol.Name} marked as USED as constructor parameter in {result.RelativePath}");
+                        }
+                    }
+                }
+            }
+        }
+
+        // Find method parameters that might indicate DI usage
+        var methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
+        foreach (var method in methods)
+        {
+            // Check for [FromServices] attribute or similar DI attributes
+            foreach (var parameter in method.ParameterList.Parameters)
+            {
+                var hasServiceAttribute = parameter.AttributeLists
+                    .SelectMany(al => al.Attributes)
+                    .Any(attr => 
+                    {
+                        var attrName = attr.Name.ToString();
+                        return attrName.Contains("FromServices") || 
+                               attrName.Contains("Inject") || 
+                               attrName.Contains("Dependency");
+                    });
+
+                if (hasServiceAttribute && parameter.Type != null)
+                {
+                    var parameterTypeSymbol = semanticModel.GetSymbolInfo(parameter.Type).Symbol;
+                    if (parameterTypeSymbol != null && allSymbols.Contains(parameterTypeSymbol))
+                    {
+                        usedSymbols.Add(parameterTypeSymbol);
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"    Method Injection: {parameterTypeSymbol.Name} marked as USED via attribute injection in {result.RelativePath}");
+                        }
+                    }
+                }
+            }
+        }
+
+        // Find property injection patterns
+        var properties = root.DescendantNodes().OfType<PropertyDeclarationSyntax>();
+        foreach (var property in properties)
+        {
+            var hasServiceAttribute = property.AttributeLists
+                .SelectMany(al => al.Attributes)
+                .Any(attr => 
+                {
+                    var attrName = attr.Name.ToString();
+                    return attrName.Contains("Inject") || 
+                           attrName.Contains("Dependency") ||
+                           attrName.Contains("Autowired");
+                });
+
+            if (hasServiceAttribute)
+            {
+                var propertyTypeSymbol = semanticModel.GetSymbolInfo(property.Type).Symbol;
+                if (propertyTypeSymbol != null && allSymbols.Contains(propertyTypeSymbol))
+                {
+                    usedSymbols.Add(propertyTypeSymbol);
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Property Injection: {propertyTypeSymbol.Name} marked as USED via property injection in {result.RelativePath}");
+                    }
+                }
+            }
+        }
+
+        await Task.CompletedTask;
     }
 
     private void UpdateFileResultWithDeadCode(FileAnalysisResult fileResult, List<ISymbol> deadSymbols)

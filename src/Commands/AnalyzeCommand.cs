@@ -17,8 +17,10 @@ public static class AnalyzeCommand
     /// <param name="ignoreMigrations">Whether to ignore database migration files during analysis</param>
     /// <param name="ignoreAzureFunctions">Whether to ignore Azure Function files during analysis</param>
     /// <param name="ignoreControllers">Whether to ignore Controller files during analysis</param>
+    /// <param name="enhancedDiDetection">Whether to enable enhanced dependency injection detection</param>
     public static async Task ExecuteAsync(string projectPath, bool verbose, bool ignoreTests = false, 
-        bool ignoreMigrations = false, bool ignoreAzureFunctions = false, bool ignoreControllers = false)
+        bool ignoreMigrations = false, bool ignoreAzureFunctions = false, bool ignoreControllers = false,
+        bool enhancedDiDetection = false)
     {
         try
         {
@@ -42,9 +44,13 @@ public static class AnalyzeCommand
                 {
                     Console.WriteLine("Ignoring Controllers");
                 }
+                if (enhancedDiDetection)
+                {
+                    Console.WriteLine("Enhanced dependency injection detection enabled");
+                }
             }
 
-            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers);
+            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection);
         }
         catch (Exception ex)
         {
@@ -58,9 +64,9 @@ public static class AnalyzeCommand
     }
 
     private static async Task AnalyzeProjectAsync(string projectPath, bool verbose, bool ignoreTests, 
-        bool ignoreMigrations, bool ignoreAzureFunctions, bool ignoreControllers)
+        bool ignoreMigrations, bool ignoreAzureFunctions, bool ignoreControllers, bool enhancedDiDetection)
     {
-        var analyzer = new CodeAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers);
+        var analyzer = new CodeAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection);
 
         Console.WriteLine($"Starting analysis of project at {projectPath}...");
         var stopwatch = Stopwatch.StartNew();
