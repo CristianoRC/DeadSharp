@@ -5,6 +5,16 @@
         <TargetFramework>net9.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>deadsharp</ToolCommandName>
+        <PackageOutputPath>./nupkg</PackageOutputPath>
+        <Version>0.1.0</Version>
+        <Authors>DeadSharp Team</Authors>
+        <Description>A tool for analyzing C# projects to identify dead code</Description>
     </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
+    </ItemGroup>
 
 </Project>
