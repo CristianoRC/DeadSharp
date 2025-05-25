@@ -125,11 +125,29 @@ public class CodeAnalyzer
             try
             {
                 var roslynResults = await _roslynAnalyzer.AnalyzeSolutionAsync(solutionPath);
-                result.ProjectResults.AddRange(roslynResults);
                 
-                if (_verbose)
+                // Check if Roslyn actually found and analyzed projects
+                if (roslynResults.Count > 0 && roslynResults.Any(r => r.SourceFileCount > 0))
                 {
-                    Console.WriteLine($"Successfully analyzed solution with Roslyn: {roslynResults.Count} projects");
+                    result.ProjectResults.AddRange(roslynResults);
+                    
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"Successfully analyzed solution with Roslyn: {roslynResults.Count} projects");
+                    }
+                }
+                else
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"Roslyn analysis returned no results, falling back to basic analysis");
+                    }
+                    
+                    // Fallback to basic analysis
+                    foreach (var projectPath in solutionInfo.ProjectPaths)
+                    {
+                        await AnalyzeProjectFileBasicAsync(projectPath, result);
+                    }
                 }
             }
             catch (Exception ex)
@@ -142,7 +160,7 @@ public class CodeAnalyzer
                 // Fallback to basic analysis
                 foreach (var projectPath in solutionInfo.ProjectPaths)
                 {
-                    await AnalyzeProjectFileAsync(projectPath, result);
+                    await AnalyzeProjectFileBasicAsync(projectPath, result);
                 }
             }
         }

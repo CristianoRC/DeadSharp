@@ -62,8 +62,10 @@ public class RoslynAnalyzer
         {
             if (_verbose)
             {
-                Console.WriteLine($"Error analyzing solution with Roslyn: {ex.Message}");
+                Console.WriteLine($"Roslyn analysis failed: {ex.Message}");
             }
+            // Return empty results to trigger fallback
+            return new List<ProjectAnalysisResult>();
         }
 
         return results;

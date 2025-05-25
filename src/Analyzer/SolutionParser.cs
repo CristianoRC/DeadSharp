@@ -37,6 +37,9 @@ public static class SolutionParser
                     // Skip solution folders and non-C# projects
                     if (relativePath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
                     {
+                        // Normalize path separators for cross-platform compatibility
+                        relativePath = relativePath.Replace('\\', Path.DirectorySeparatorChar);
+                        
                         // Convert relative path to absolute path
                         var absolutePath = Path.Combine(solutionDirectory, relativePath);
                         absolutePath = Path.GetFullPath(absolutePath);
