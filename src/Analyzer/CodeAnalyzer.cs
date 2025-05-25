@@ -35,9 +35,9 @@ public class CodeAnalyzer
             }
             
             // 1. Identify if it's a solution or project file
-            bool isSolution = projectPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase);
-            bool isProject = projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
-            bool isDirectory = Directory.Exists(projectPath);
+            var isSolution = projectPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase);
+            var isProject = projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+            var isDirectory = Directory.Exists(projectPath);
             
             if (isDirectory)
             {
