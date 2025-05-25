@@ -2,6 +2,8 @@
 
 DeadSharp is a command-line tool for analyzing C# projects and identifying dead code.
 
+
+
 ## 🆕 What's New
 
 **Enhanced Data Flow Analysis** - Advanced semantic analysis capabilities! The new `--enhanced-dataflow` option provides sophisticated pattern detection that significantly reduces false positives by tracking:
@@ -305,29 +307,6 @@ var repo = new Repository<MyEntity>(); // ✅ MyEntity marked as used
 
 **Performance Note:** Enhanced data flow analysis requires deep semantic analysis using the Roslyn compiler platform and may take longer on large projects, but provides significantly more accurate results by understanding the actual code semantics rather than just pattern matching.
 
-**Best Practice:** Combine with other options for optimal results:
-```bash
-deadsharp -p /path/to/project --enhanced-di-detection --enhanced-dataflow --ignore-tests
-```
-
-#### Combining Ignore Options
-
-You can combine multiple ignore options to fine-tune your analysis:
-
-```bash
-# Ignore all framework-specific files
-deadsharp -p /path/to/project --ignore-tests --ignore-migrations --ignore-azure-functions --ignore-controllers
-
-# Using short aliases
-deadsharp -p /path/to/project -i -im -iaf -ic
-
-# Include enhanced analysis for maximum accuracy
-deadsharp -p /path/to/project --ignore-tests --ignore-controllers --enhanced-di-detection --enhanced-dataflow
-
-# Ultimate configuration for production projects
-deadsharp -p /path/to/project -v -i -im -ic -ed -edf -o results.json
-```
-
 ## Features
 
 - ✅ Analysis of C# projects to identify unused code
@@ -388,4 +367,14 @@ See the [LICENSE](LICENSE) file for details.
 ## Contributing
 
 Pull requests are welcome! If you'd like to contribute, please fork the repo and submit a PR. Bug reports and feature requests are also highly appreciated.
+
+## ⚠️ Disclaimer
+
+**Early Stage Project**: DeadSharp is in a very early stage of development. The tool is constantly evolving and may exhibit unexpected behaviors.
+
+**Analysis Accuracy**:
+- **False Positives**: The tool may identify code as "dead" that is actually being used, especially in complex patterns like dependency injection, reflection, dynamic loading, and framework conventions. Always manually review results before removing code.
+- **False Negatives**: There is also the possibility of false negatives, where genuinely unused code is not detected by the tool, particularly in cases of indirectly referenced code or through patterns not recognized by the analyzer.
+
+**Recommended Use**: Use DeadSharp as an auxiliary tool to identify potential candidates for refactoring or removal, always with manual verification of the results.
 

@@ -16,6 +16,7 @@ public class CodeAnalyzer
     private readonly bool _enhancedDiDetection;
     private readonly bool _enhancedDataFlow;
     private readonly RoslynAnalyzer _roslynAnalyzer;
+    private readonly EnhancedBasicAnalyzer _enhancedBasicAnalyzer;
     
     public CodeAnalyzer(bool verbose = false, bool ignoreTests = false, bool ignoreMigrations = false, 
         bool ignoreAzureFunctions = false, bool ignoreControllers = false, bool enhancedDiDetection = false,
@@ -29,6 +30,7 @@ public class CodeAnalyzer
         _enhancedDiDetection = enhancedDiDetection;
         _enhancedDataFlow = enhancedDataFlow;
         _roslynAnalyzer = new RoslynAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, enhancedDataFlow);
+        _enhancedBasicAnalyzer = new EnhancedBasicAnalyzer(verbose);
     }
     
     /// <summary>
@@ -332,12 +334,40 @@ public class CodeAnalyzer
             
             // Basic pattern matching for fallback analysis
             // Count classes (including those without explicit access modifiers)
-            var classMatches = Regex.Matches(sourceCode, @"(?:public|internal|private|protected)?\s*class\s+(\w+)", RegexOptions.Multiline);
+            var classMatches = Regex.Matches(sourceCode, @"(?:public|internal|private|protected)?\s*(?:static\s+)?(?:abstract\s+)?(?:sealed\s+)?class\s+(\w+)", RegexOptions.Multiline);
             result.ClassCount = classMatches.Count;
             
+            if (_verbose)
+            {
+                foreach (Match match in classMatches)
+                {
+                    Console.WriteLine($"  Found class: {match.Groups[1].Value}");
+                }
+            }
+            
+            // Count interfaces too
+            var interfaceMatches = Regex.Matches(sourceCode, @"(?:public|internal|private|protected)?\s*interface\s+(\w+)", RegexOptions.Multiline);
+            result.ClassCount += interfaceMatches.Count;
+            
+            if (_verbose)
+            {
+                foreach (Match match in interfaceMatches)
+                {
+                    Console.WriteLine($"  Found interface: {match.Groups[1].Value}");
+                }
+            }
+            
             // Count methods (including those without explicit access modifiers)
-            var methodMatches = Regex.Matches(sourceCode, @"(?:public|internal|private|protected)?\s*(?:static\s+)?(?:async\s+)?(?:\w+(?:<[^>]+>)?\s+)?(\w+)\s*\([^)]*\)\s*(?:\{|=>)", RegexOptions.Multiline);
+            var methodMatches = Regex.Matches(sourceCode, @"(?:public|internal|private|protected)?\s*(?:static\s+)?(?:async\s+)?(?:virtual\s+)?(?:override\s+)?(?:\w+(?:<[^>]+>)?\s+)?(\w+)\s*\([^)]*\)\s*(?:\{|=>)", RegexOptions.Multiline);
             result.MethodCount = methodMatches.Count;
+            
+            if (_verbose)
+            {
+                foreach (Match match in methodMatches)
+                {
+                    Console.WriteLine($"  Found method: {match.Groups[1].Value}");
+                }
+            }
             
             // Note: Dead code detection is now performed at the project level in PerformCrossFileDeadCodeAnalysis
             
@@ -1031,12 +1061,26 @@ public class CodeAnalyzer
                 }
             }
             
-            // Update project totals
-            projectResult.PotentialDeadMethods += fileResult.PotentialDeadMethodCount;
-            projectResult.PotentialDeadClasses += fileResult.PotentialDeadClassCount;
+                    // Update project totals
+        projectResult.PotentialDeadMethods += fileResult.PotentialDeadMethodCount;
+        projectResult.PotentialDeadClasses += fileResult.PotentialDeadClassCount;
+    }
+    
+    // Apply enhanced data flow analysis if enabled
+    if (_enhancedDataFlow)
+    {
+        if (_verbose)
+        {
+            Console.WriteLine("Applying enhanced data flow analysis...");
         }
         
-        await Task.CompletedTask;
+        _enhancedBasicAnalyzer.AnalyzeAdvancedPatterns(
+            string.Join("\n", allSourceCode.Values), 
+            allSourceCode, 
+            allFileResults);
+    }
+    
+    await Task.CompletedTask;
     }
     
     private async Task PerformCrossProjectAnalysis(List<string> projectPaths, AnalysisResult result)
@@ -1489,13 +1533,34 @@ public class CodeAnalyzer
                     }
                 }
                 
-                // Update project totals
-                projectResult.PotentialDeadMethods += fileResult.PotentialDeadMethodCount;
-                projectResult.PotentialDeadClasses += fileResult.PotentialDeadClassCount;
-            }
+                            // Update project totals
+            projectResult.PotentialDeadMethods += fileResult.PotentialDeadMethodCount;
+            projectResult.PotentialDeadClasses += fileResult.PotentialDeadClassCount;
+        }
+    }
+    
+    // Apply enhanced data flow analysis if enabled
+    if (_enhancedDataFlow)
+    {
+        if (_verbose)
+        {
+            Console.WriteLine("Applying enhanced data flow analysis (cross-project)...");
         }
         
-        await Task.CompletedTask;
+        // Collect all file results from all projects
+        var allFileResults = new List<FileAnalysisResult>();
+        foreach (var projectResult in allProjectResults)
+        {
+            allFileResults.AddRange(projectResult.FileResults);
+        }
+        
+        _enhancedBasicAnalyzer.AnalyzeAdvancedPatterns(
+            string.Join("\n", allSourceCode.Values), 
+            allSourceCode, 
+            allFileResults);
+    }
+    
+    await Task.CompletedTask;
     }
     
     /// <summary>
