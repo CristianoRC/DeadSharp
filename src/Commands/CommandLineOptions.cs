@@ -18,6 +18,11 @@ public static class CommandLineOptions
     public static Option<bool> Verbose { get; } = CreateVerboseOption();
     
     /// <summary>
+    /// Option for ignoring test projects during analysis
+    /// </summary>
+    public static Option<bool> IgnoreTests { get; } = CreateIgnoreTestsOption();
+    
+    /// <summary>
     /// Creates and configures the root command with all options
     /// </summary>
     /// <returns>Configured root command</returns>
@@ -27,6 +32,7 @@ public static class CommandLineOptions
         
         rootCommand.AddOption(ProjectPath);
         rootCommand.AddOption(Verbose);
+        rootCommand.AddOption(IgnoreTests);
         
         return rootCommand;
     }
@@ -89,6 +95,17 @@ public static class CommandLineOptions
             description: "Enable verbose output for detailed analysis information");
         
         option.AddAlias("-v");
+        
+        return option;
+    }
+    
+    private static Option<bool> CreateIgnoreTestsOption()
+    {
+        var option = new Option<bool>(
+            name: "--ignore-tests",
+            description: "Ignore test projects during analysis");
+        
+        option.AddAlias("-i");
         
         return option;
     }

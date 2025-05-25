@@ -29,6 +29,12 @@ deadsharp -p /caminho/para/seu/projeto
 
 # Habilitar saída verbosa
 deadsharp -p /caminho/para/seu/projeto -v
+
+# Ignorar projetos de teste durante a análise
+deadsharp -p /caminho/para/seu/projeto --ignore-tests
+
+# Combinar opções
+deadsharp -p /caminho/para/seu/projeto -v --ignore-tests
 ```
 
 ### Tipos de Entrada Suportados
@@ -37,6 +43,26 @@ deadsharp -p /caminho/para/seu/projeto -v
 - **Arquivos .sln**: Analisa todos os projetos na solução
 - **Arquivos .csproj**: Analisa o projeto específico
 
+### Opções Avançadas
+
+#### Ignorar Projetos de Teste (`--ignore-tests`)
+
+Por padrão, a ferramenta analisa todos os projetos encontrados, incluindo projetos de teste. Isso pode gerar muitos falsos positivos, pois métodos de teste são executados pelos frameworks de teste e não são "chamados" diretamente no código.
+
+Use a opção `--ignore-tests` para filtrar automaticamente projetos de teste:
+
+```bash
+deadsharp -p /caminho/para/projeto --ignore-tests
+```
+
+A ferramenta detecta projetos de teste baseado em:
+- **Padrões de nomenclatura**: projetos contendo "test", "tests", "unittest", "spec", etc.
+- **Dependências**: projetos que referenciam pacotes como xUnit, NUnit, MSTest, Moq, FluentAssertions, etc.
+
+**Exemplo de resultado:**
+- Sem `--ignore-tests`: 89 métodos potencialmente mortos
+- Com `--ignore-tests`: 35 métodos potencialmente mortos (54 falsos positivos removidos)
+
 ## Funcionalidades
 
 - ✅ Análise de projetos C# para identificar código não utilizado
@@ -44,6 +70,7 @@ deadsharp -p /caminho/para/seu/projeto -v
 - ✅ Relatórios detalhados de localização de código morto
 - ✅ Validação de entrada com mensagens de erro claras
 - ✅ Modo verboso para análise detalhada
+- ✅ Opção para ignorar projetos de teste (reduz falsos positivos)
 - ✅ Arquitetura modular e extensível
 
 ## Estrutura do Projeto

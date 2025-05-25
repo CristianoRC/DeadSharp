@@ -9,12 +9,14 @@ namespace DeadSharp.Analyzer;
 public class CodeAnalyzer
 {
     private readonly bool _verbose;
+    private readonly bool _ignoreTests;
     private readonly RoslynAnalyzer _roslynAnalyzer;
     
-    public CodeAnalyzer(bool verbose = false)
+    public CodeAnalyzer(bool verbose = false, bool ignoreTests = false)
     {
         _verbose = verbose;
-        _roslynAnalyzer = new RoslynAnalyzer(verbose);
+        _ignoreTests = ignoreTests;
+        _roslynAnalyzer = new RoslynAnalyzer(verbose, ignoreTests);
     }
     
     /// <summary>
@@ -178,6 +180,16 @@ public class CodeAnalyzer
         if (_verbose)
         {
             Console.WriteLine($"Analyzing project: {projectFilePath}");
+        }
+        
+        // Filter out test projects if requested
+        if (_ignoreTests && IsTestProject(projectFilePath))
+        {
+            if (_verbose)
+            {
+                Console.WriteLine($"  Detected test project by name/content: {Path.GetFileNameWithoutExtension(projectFilePath)}");
+            }
+            return;
         }
         
         try
@@ -901,12 +913,37 @@ public class CodeAnalyzer
             Console.WriteLine($"Performing cross-project analysis for {projectPaths.Count} projects");
         }
         
+        // Filter out test projects if requested
+        var filteredProjectPaths = projectPaths;
+        if (_ignoreTests)
+        {
+            filteredProjectPaths = projectPaths.Where(p => !IsTestProject(p)).ToList();
+            
+            if (_verbose)
+            {
+                var ignoredCount = projectPaths.Count - filteredProjectPaths.Count;
+                if (ignoredCount > 0)
+                {
+                    Console.WriteLine($"Ignoring {ignoredCount} test project(s)");
+                }
+            }
+        }
+        
+        if (filteredProjectPaths.Count == 0)
+        {
+            if (_verbose)
+            {
+                Console.WriteLine("No projects to analyze after filtering");
+            }
+            return;
+        }
+        
         // Collect all source code from all projects
         var allSourceCode = new Dictionary<string, string>();
         var allProjectResults = new List<ProjectAnalysisResult>();
         
         // First pass: collect all source files from all projects
-        foreach (var projectPath in projectPaths)
+        foreach (var projectPath in filteredProjectPaths)
         {
             var projectDir = Path.GetDirectoryName(projectPath);
             var sourceFiles = Directory.GetFiles(projectDir!, "*.cs", SearchOption.AllDirectories);
@@ -1205,5 +1242,69 @@ public class CodeAnalyzer
         }
         
         await Task.CompletedTask;
+    }
+    
+    /// <summary>
+    /// Determines if a project is a test project based on naming conventions and package references
+    /// </summary>
+    /// <param name="projectPath">Path to the project file</param>
+    /// <returns>True if the project appears to be a test project</returns>
+    private bool IsTestProject(string projectPath)
+    {
+        try
+        {
+            var projectName = Path.GetFileNameWithoutExtension(projectPath);
+            
+            // Check common test project naming patterns
+            var testPatterns = new[]
+            {
+                "test", "tests", "unittest", "unittests", "integrationtest", "integrationtests",
+                "spec", "specs", "fixture", "fixtures"
+            };
+            
+            foreach (var pattern in testPatterns)
+            {
+                if (projectName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  Detected test project by name: {projectName}");
+                    }
+                    return true;
+                }
+            }
+            
+            // Check project file content for test-related package references
+            var projectContent = File.ReadAllText(projectPath);
+            var testPackages = new[]
+            {
+                "Microsoft.NET.Test.Sdk",
+                "xunit", "NUnit", "MSTest",
+                "FluentAssertions", "Moq", "NSubstitute",
+                "Shouldly", "AutoFixture"
+            };
+            
+            foreach (var package in testPackages)
+            {
+                if (projectContent.Contains(package, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"  Detected test project by package reference: {projectName} (contains {package})");
+                    }
+                    return true;
+                }
+            }
+            
+            return false;
+        }
+        catch (Exception ex)
+        {
+            if (_verbose)
+            {
+                Console.WriteLine($"  Error checking if project is test project {projectPath}: {ex.Message}");
+            }
+            return false;
+        }
     }
 } 

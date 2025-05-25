@@ -13,7 +13,8 @@ public static class AnalyzeCommand
     /// </summary>
     /// <param name="projectPath">Path to the project or solution to analyze</param>
     /// <param name="verbose">Whether to enable verbose output</param>
-    public static async Task ExecuteAsync(string projectPath, bool verbose)
+    /// <param name="ignoreTests">Whether to ignore test projects during analysis</param>
+    public static async Task ExecuteAsync(string projectPath, bool verbose, bool ignoreTests = false)
     {
         try
         {
@@ -21,9 +22,13 @@ public static class AnalyzeCommand
             {
                 Console.WriteLine($"Analyzing project at: {projectPath}");
                 Console.WriteLine("Verbose mode enabled");
+                if (ignoreTests)
+                {
+                    Console.WriteLine("Ignoring test projects");
+                }
             }
 
-            await AnalyzeProjectAsync(projectPath, verbose);
+            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests);
         }
         catch (Exception ex)
         {
@@ -36,9 +41,9 @@ public static class AnalyzeCommand
         }
     }
 
-    private static async Task AnalyzeProjectAsync(string projectPath, bool verbose)
+    private static async Task AnalyzeProjectAsync(string projectPath, bool verbose, bool ignoreTests)
     {
-        var analyzer = new CodeAnalyzer(verbose);
+        var analyzer = new CodeAnalyzer(verbose, ignoreTests);
 
         Console.WriteLine($"Starting analysis of project at {projectPath}...");
         var stopwatch = Stopwatch.StartNew();

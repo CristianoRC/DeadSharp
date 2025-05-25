@@ -12,11 +12,13 @@ namespace DeadSharp.Analyzer;
 public class RoslynAnalyzer
 {
     private readonly bool _verbose;
+    private readonly bool _ignoreTests;
     private static bool _msbuildRegistered = false;
 
-    public RoslynAnalyzer(bool verbose = false)
+    public RoslynAnalyzer(bool verbose = false, bool ignoreTests = false)
     {
         _verbose = verbose;
+        _ignoreTests = ignoreTests;
         EnsureMSBuildRegistered();
     }
 
@@ -53,6 +55,16 @@ public class RoslynAnalyzer
             {
                 if (project.Language == LanguageNames.CSharp)
                 {
+                    // Filter out test projects if requested
+                    if (_ignoreTests && IsTestProject(project))
+                    {
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"  Detected test project by Roslyn: {project.Name}");
+                        }
+                        continue;
+                    }
+                    
                     var result = await AnalyzeProjectAsync(project);
                     results.Add(result);
                 }
@@ -350,5 +362,55 @@ public class RoslynAnalyzer
     {
         var accessibility = symbol.DeclaredAccessibility.ToString().ToLower();
         return $"No references found to this {accessibility} {GetSymbolType(symbol).ToLower()}";
+    }
+
+    private static bool IsTestProject(Project project)
+    {
+        try
+        {
+            var projectName = project.Name;
+            
+            // Check common test project naming patterns
+            var testPatterns = new[]
+            {
+                "test", "tests", "unittest", "unittests", "integrationtest", "integrationtests",
+                "spec", "specs", "fixture", "fixtures"
+            };
+            
+            foreach (var pattern in testPatterns)
+            {
+                if (projectName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            
+            // Check project file content for test-related package references
+            if (!string.IsNullOrEmpty(project.FilePath) && File.Exists(project.FilePath))
+            {
+                var projectContent = File.ReadAllText(project.FilePath);
+                var testPackages = new[]
+                {
+                    "Microsoft.NET.Test.Sdk",
+                    "xunit", "NUnit", "MSTest",
+                    "FluentAssertions", "Moq", "NSubstitute",
+                    "Shouldly", "AutoFixture"
+                };
+                
+                foreach (var package in testPackages)
+                {
+                    if (projectContent.Contains(package, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+        catch
+        {
+            return false;
+        }
     }
 } 

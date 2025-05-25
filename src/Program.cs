@@ -12,7 +12,8 @@ class Program
         rootCommand.SetHandler(
             AnalyzeCommand.ExecuteAsync,
             CommandLineOptions.ProjectPath, 
-            CommandLineOptions.Verbose);
+            CommandLineOptions.Verbose,
+            CommandLineOptions.IgnoreTests);
 
         return await rootCommand.InvokeAsync(args);
     }
