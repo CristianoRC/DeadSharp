@@ -140,28 +140,22 @@ public class CodeAnalyzer
                 {
                     if (_verbose)
                     {
-                        Console.WriteLine($"Roslyn analysis returned no results, falling back to basic analysis");
+                        Console.WriteLine($"Roslyn analysis returned no results, falling back to cross-project analysis");
                     }
                     
-                    // Fallback to basic analysis
-                    foreach (var projectPath in solutionInfo.ProjectPaths)
-                    {
-                        await AnalyzeProjectFileBasicAsync(projectPath, result);
-                    }
+                    // Fallback to cross-project analysis
+                    await PerformCrossProjectAnalysis(solutionInfo.ProjectPaths, result);
                 }
             }
             catch (Exception ex)
             {
                 if (_verbose)
                 {
-                    Console.WriteLine($"Roslyn analysis failed, falling back to basic analysis: {ex.Message}");
+                    Console.WriteLine($"Roslyn analysis failed, falling back to cross-project analysis: {ex.Message}");
                 }
                 
-                // Fallback to basic analysis
-                foreach (var projectPath in solutionInfo.ProjectPaths)
-                {
-                    await AnalyzeProjectFileBasicAsync(projectPath, result);
-                }
+                // Fallback to cross-project analysis
+                await PerformCrossProjectAnalysis(solutionInfo.ProjectPaths, result);
             }
         }
         catch (Exception ex)
@@ -175,10 +169,7 @@ public class CodeAnalyzer
             var solutionDir = Path.GetDirectoryName(solutionPath);
             var projectFiles = Directory.GetFiles(solutionDir!, "*.csproj", SearchOption.AllDirectories);
             
-            foreach (var projectFile in projectFiles)
-            {
-                await AnalyzeProjectFileAsync(projectFile, result);
-            }
+            await PerformCrossProjectAnalysis(projectFiles.ToList(), result);
         }
     }
     
@@ -229,6 +220,10 @@ public class CodeAnalyzer
             SourceFileCount = sourceFiles.Length
         };
         
+        // First pass: collect all source code to analyze across files
+        var allSourceCode = new Dictionary<string, string>();
+        var allFileResults = new List<FileAnalysisResult>();
+        
         foreach (var sourceFile in sourceFiles)
         {
             // Skip generated files
@@ -241,15 +236,30 @@ public class CodeAnalyzer
                 continue;
             }
             
-            var fileResult = await AnalyzeSourceFileAsync(sourceFile);
-            projectResult.FileResults.Add(fileResult);
-            
-            // Aggregate statistics
-            projectResult.TotalMethods += fileResult.MethodCount;
-            projectResult.PotentialDeadMethods += fileResult.PotentialDeadMethodCount;
-            projectResult.TotalClasses += fileResult.ClassCount;
-            projectResult.PotentialDeadClasses += fileResult.PotentialDeadClassCount;
+            try
+            {
+                var sourceCode = await File.ReadAllTextAsync(sourceFile);
+                allSourceCode[sourceFile] = sourceCode;
+                
+                var fileResult = await AnalyzeSourceFileAsync(sourceFile);
+                allFileResults.Add(fileResult);
+                projectResult.FileResults.Add(fileResult);
+                
+                // Aggregate statistics
+                projectResult.TotalMethods += fileResult.MethodCount;
+                projectResult.TotalClasses += fileResult.ClassCount;
+            }
+            catch (Exception ex)
+            {
+                if (_verbose)
+                {
+                    Console.WriteLine($"Error reading file {sourceFile}: {ex.Message}");
+                }
+            }
         }
+        
+        // Second pass: perform cross-file dead code analysis
+        await PerformCrossFileDeadCodeAnalysis(allSourceCode, allFileResults, projectResult);
         
         result.ProjectResults.Add(projectResult);
     }
@@ -275,8 +285,7 @@ public class CodeAnalyzer
             var methodMatches = Regex.Matches(sourceCode, @"(public|internal|private|protected)?\s+(static\s+)?\w+\s+\w+\s*\([^)]*\)");
             result.MethodCount = methodMatches.Count;
             
-            // Basic dead code detection (very simple heuristics)
-            await PerformBasicDeadCodeDetection(sourceCode, result);
+            // Note: Dead code detection is now performed at the project level in PerformCrossFileDeadCodeAnalysis
             
             if (_verbose)
             {
@@ -634,5 +643,567 @@ public class CodeAnalyzer
             "new", "this", "base", "null", "true", "false"
         };
         return keywords.Contains(methodName.ToLower());
+    }
+    
+    private async Task PerformCrossFileDeadCodeAnalysis(
+        Dictionary<string, string> allSourceCode, 
+        List<FileAnalysisResult> allFileResults, 
+        ProjectAnalysisResult projectResult)
+    {
+        if (_verbose)
+        {
+            Console.WriteLine($"Performing cross-file dead code analysis for project: {Path.GetFileName(projectResult.ProjectPath)}");
+        }
+        
+        // Combine all source code for analysis
+        var combinedCode = string.Join("\n", allSourceCode.Values);
+        var cleanedCombinedCode = RemoveCommentsAndStrings(combinedCode);
+        
+        // Collect all declared classes and methods across all files
+        var allDeclaredClasses = new Dictionary<string, (string filePath, int lineNumber)>();
+        var allDeclaredMethods = new Dictionary<string, (string filePath, int lineNumber, string accessibility)>();
+        
+        // First pass: collect all declarations
+        foreach (var kvp in allSourceCode)
+        {
+            var filePath = kvp.Key;
+            var sourceCode = kvp.Value;
+            var lines = sourceCode.Split('\n');
+            
+            // Find class declarations
+            var classRegex = new Regex(@"(public|internal|private|protected)?\s+class\s+(\w+)", RegexOptions.Compiled);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var match = classRegex.Match(lines[i]);
+                if (match.Success)
+                {
+                    var className = match.Groups[2].Value;
+                    if (!allDeclaredClasses.ContainsKey(className))
+                    {
+                        allDeclaredClasses[className] = (filePath, i + 1);
+                    }
+                }
+            }
+            
+            // Find method declarations
+            var methodRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)", RegexOptions.Compiled);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var match = methodRegex.Match(lines[i]);
+                if (match.Success)
+                {
+                    var accessibility = match.Groups[1].Value;
+                    var methodName = match.Groups[2].Value;
+                    
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Found method: {accessibility} {methodName} in {Path.GetFileName(filePath)}:{i + 1}");
+                    }
+                    
+                    // Skip special methods
+                    if (!IsSpecialMethod(methodName) && !IsKeywordOrType(methodName))
+                    {
+                        var key = $"{methodName}_{accessibility}";
+                        if (!allDeclaredMethods.ContainsKey(key))
+                        {
+                            allDeclaredMethods[key] = (filePath, i + 1, accessibility);
+                            
+                            if (_verbose)
+                            {
+                                Console.WriteLine($"      Added to analysis: {key}");
+                            }
+                        }
+                    }
+                    else if (_verbose)
+                    {
+                        Console.WriteLine($"      Skipped special/keyword method: {methodName}");
+                    }
+                }
+            }
+        }
+        
+        if (_verbose)
+        {
+            Console.WriteLine($"Found {allDeclaredClasses.Count} classes and {allDeclaredMethods.Count} methods to analyze");
+        }
+        
+        // Second pass: check usage across all files
+        var usedClasses = new HashSet<string>();
+        var usedMethods = new HashSet<string>();
+        
+        // Create a version of the code without method declarations to avoid false positives
+        var codeWithoutDeclarations = cleanedCombinedCode;
+        
+        // Remove method declarations from the analysis
+        var methodDeclarationRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)\s*\{?", RegexOptions.Compiled);
+        codeWithoutDeclarations = methodDeclarationRegex.Replace(codeWithoutDeclarations, "");
+        
+        // Remove class declarations too
+        var classDeclarationRegex = new Regex(@"(public|internal|private|protected)?\s+class\s+(\w+)", RegexOptions.Compiled);
+        codeWithoutDeclarations = classDeclarationRegex.Replace(codeWithoutDeclarations, "");
+        
+        if (_verbose)
+        {
+            Console.WriteLine($"Analyzing usage in cleaned code (length: {codeWithoutDeclarations.Length} chars)");
+        }
+        
+        // Analyze usage patterns in cleaned combined code
+        foreach (var className in allDeclaredClasses.Keys)
+        {
+            // Look for class usage patterns
+            var classUsagePatterns = new[]
+            {
+                $@"\bnew\s+{Regex.Escape(className)}\s*\(",  // new ClassName()
+                $@"\b{Regex.Escape(className)}\s+\w+",      // ClassName variable
+                $@":\s*{Regex.Escape(className)}\b",        // inheritance
+                $@"<{Regex.Escape(className)}>",            // generic parameter
+                $@"\({Regex.Escape(className)}\s+",         // parameter type
+                $@"\b{Regex.Escape(className)}\.",          // static access
+            };
+            
+            foreach (var pattern in classUsagePatterns)
+            {
+                if (Regex.IsMatch(codeWithoutDeclarations, pattern, RegexOptions.IgnoreCase))
+                {
+                    usedClasses.Add(className);
+                    break;
+                }
+            }
+        }
+        
+        foreach (var methodKey in allDeclaredMethods.Keys)
+        {
+            var methodName = methodKey.Split('_')[0];
+            
+            // Look for method call patterns
+            var methodUsagePatterns = new[]
+            {
+                $@"\b{Regex.Escape(methodName)}\s*\(",      // methodName()
+                $@"\.{Regex.Escape(methodName)}\s*\(",     // .methodName()
+                $@"\b{Regex.Escape(methodName)}\s*;",      // delegate reference
+            };
+            
+            foreach (var pattern in methodUsagePatterns)
+            {
+                if (Regex.IsMatch(codeWithoutDeclarations, pattern, RegexOptions.IgnoreCase))
+                {
+                    usedMethods.Add(methodKey);
+                    
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Method {methodName} marked as USED (pattern: {pattern})");
+                    }
+                    break;
+                }
+            }
+            
+            if (_verbose && !usedMethods.Contains(methodKey))
+            {
+                Console.WriteLine($"    Method {methodName} marked as UNUSED");
+            }
+        }
+        
+        if (_verbose)
+        {
+            Console.WriteLine($"Found {usedClasses.Count} used classes and {usedMethods.Count} used methods");
+        }
+        
+        // Third pass: identify dead code and update file results
+        foreach (var fileResult in allFileResults)
+        {
+            // Clear previous dead code results
+            fileResult.DeadClasses.Clear();
+            fileResult.DeadMethods.Clear();
+            fileResult.PotentialDeadClassCount = 0;
+            fileResult.PotentialDeadMethodCount = 0;
+            
+            // Check for dead classes in this file
+            foreach (var kvp in allDeclaredClasses)
+            {
+                var className = kvp.Key;
+                var (filePath, lineNumber) = kvp.Value;
+                
+                if (filePath == fileResult.FilePath && !usedClasses.Contains(className))
+                {
+                    var deadCodeItem = new DeadCodeItem
+                    {
+                        Name = className,
+                        Type = "Class",
+                        LineNumber = lineNumber,
+                        ColumnNumber = 1,
+                        ConfidencePercentage = 85,
+                        Reason = "Class with no apparent references across the project"
+                    };
+                    
+                    fileResult.DeadClasses.Add(deadCodeItem);
+                    fileResult.PotentialDeadClassCount++;
+                    
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"DEAD CLASS: {className} in {Path.GetFileName(filePath)}:{lineNumber}");
+                    }
+                }
+            }
+            
+            // Check for dead methods in this file
+            foreach (var kvp in allDeclaredMethods)
+            {
+                var methodKey = kvp.Key;
+                var (filePath, lineNumber, accessibility) = kvp.Value;
+                var methodName = methodKey.Split('_')[0];
+                
+                if (filePath == fileResult.FilePath && !usedMethods.Contains(methodKey))
+                {
+                    // Flag private, internal, and public methods as potential dead code
+                    if (accessibility == "private" || accessibility == "internal" || accessibility == "public")
+                    {
+                        var confidence = accessibility switch
+                        {
+                            "private" => 90,
+                            "internal" => 75,
+                            "public" => 60, // Lower confidence for public methods as they might be part of API
+                            _ => 50
+                        };
+                        
+                        var deadCodeItem = new DeadCodeItem
+                        {
+                            Name = methodName,
+                            Type = "Method",
+                            LineNumber = lineNumber,
+                            ColumnNumber = 1,
+                            ConfidencePercentage = confidence,
+                            Reason = $"{accessibility.Substring(0, 1).ToUpper()}{accessibility.Substring(1)} method with no apparent references across the project"
+                        };
+                        
+                        fileResult.DeadMethods.Add(deadCodeItem);
+                        fileResult.PotentialDeadMethodCount++;
+                        
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"DEAD METHOD: {accessibility} {methodName} in {Path.GetFileName(filePath)}:{lineNumber}");
+                        }
+                    }
+                }
+            }
+            
+            // Update project totals
+            projectResult.PotentialDeadMethods += fileResult.PotentialDeadMethodCount;
+            projectResult.PotentialDeadClasses += fileResult.PotentialDeadClassCount;
+        }
+        
+        await Task.CompletedTask;
+    }
+    
+    private async Task PerformCrossProjectAnalysis(List<string> projectPaths, AnalysisResult result)
+    {
+        if (_verbose)
+        {
+            Console.WriteLine($"Performing cross-project analysis for {projectPaths.Count} projects");
+        }
+        
+        // Collect all source code from all projects
+        var allSourceCode = new Dictionary<string, string>();
+        var allProjectResults = new List<ProjectAnalysisResult>();
+        
+        // First pass: collect all source files from all projects
+        foreach (var projectPath in projectPaths)
+        {
+            var projectDir = Path.GetDirectoryName(projectPath);
+            var sourceFiles = Directory.GetFiles(projectDir!, "*.cs", SearchOption.AllDirectories);
+            
+            var projectResult = new ProjectAnalysisResult
+            {
+                ProjectPath = projectPath,
+                SourceFileCount = sourceFiles.Length
+            };
+            
+            if (_verbose)
+            {
+                Console.WriteLine($"  Collecting files from {Path.GetFileName(projectPath)}: {sourceFiles.Length} files");
+            }
+            
+            foreach (var sourceFile in sourceFiles)
+            {
+                // Skip generated files
+                if (IsGeneratedFile(sourceFile))
+                {
+                    continue;
+                }
+                
+                try
+                {
+                    var sourceCode = await File.ReadAllTextAsync(sourceFile);
+                    allSourceCode[sourceFile] = sourceCode;
+                    
+                    var fileResult = await AnalyzeSourceFileAsync(sourceFile);
+                    projectResult.FileResults.Add(fileResult);
+                    
+                    // Aggregate statistics
+                    projectResult.TotalMethods += fileResult.MethodCount;
+                    projectResult.TotalClasses += fileResult.ClassCount;
+                }
+                catch (Exception ex)
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Error reading file {sourceFile}: {ex.Message}");
+                    }
+                }
+            }
+            
+            allProjectResults.Add(projectResult);
+        }
+        
+        if (_verbose)
+        {
+            Console.WriteLine($"Collected {allSourceCode.Count} source files from {projectPaths.Count} projects");
+        }
+        
+        // Second pass: perform cross-project dead code analysis
+        await PerformCrossProjectDeadCodeAnalysis(allSourceCode, allProjectResults);
+        
+        // Add all project results to the main result
+        result.ProjectResults.AddRange(allProjectResults);
+    }
+    
+    private async Task PerformCrossProjectDeadCodeAnalysis(
+        Dictionary<string, string> allSourceCode, 
+        List<ProjectAnalysisResult> allProjectResults)
+    {
+        if (_verbose)
+        {
+            Console.WriteLine($"Performing cross-project dead code analysis across {allSourceCode.Count} files");
+        }
+        
+        // Combine all source code for analysis
+        var combinedCode = string.Join("\n", allSourceCode.Values);
+        var cleanedCombinedCode = RemoveCommentsAndStrings(combinedCode);
+        
+        // Collect all declared classes and methods across ALL projects
+        var allDeclaredClasses = new Dictionary<string, (string filePath, int lineNumber, string projectPath)>();
+        var allDeclaredMethods = new Dictionary<string, (string filePath, int lineNumber, string accessibility, string projectPath)>();
+        
+        // First pass: collect all declarations from all projects
+        foreach (var kvp in allSourceCode)
+        {
+            var filePath = kvp.Key;
+            var sourceCode = kvp.Value;
+            var lines = sourceCode.Split('\n');
+            
+            // Find which project this file belongs to
+            var projectPath = allProjectResults.FirstOrDefault(p => filePath.StartsWith(Path.GetDirectoryName(p.ProjectPath)!))?.ProjectPath ?? "Unknown";
+            
+            // Find class declarations
+            var classRegex = new Regex(@"(public|internal|private|protected)?\s+class\s+(\w+)", RegexOptions.Compiled);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var match = classRegex.Match(lines[i]);
+                if (match.Success)
+                {
+                    var className = match.Groups[2].Value;
+                    var key = $"{className}_{Path.GetFileName(filePath)}"; // Make unique per file
+                    if (!allDeclaredClasses.ContainsKey(key))
+                    {
+                        allDeclaredClasses[key] = (filePath, i + 1, projectPath);
+                    }
+                }
+            }
+            
+            // Find method declarations
+            var methodRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)", RegexOptions.Compiled);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var match = methodRegex.Match(lines[i]);
+                if (match.Success)
+                {
+                    var accessibility = match.Groups[1].Value;
+                    var methodName = match.Groups[2].Value;
+                    
+                    // Skip special methods
+                    if (!IsSpecialMethod(methodName) && !IsKeywordOrType(methodName))
+                    {
+                        var key = $"{methodName}_{accessibility}_{Path.GetFileName(filePath)}"; // Make unique per file
+                        if (!allDeclaredMethods.ContainsKey(key))
+                        {
+                            allDeclaredMethods[key] = (filePath, i + 1, accessibility, projectPath);
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (_verbose)
+        {
+            Console.WriteLine($"Found {allDeclaredClasses.Count} classes and {allDeclaredMethods.Count} methods across all projects");
+        }
+        
+        // Create a version of the code without method/class declarations to avoid false positives
+        var codeWithoutDeclarations = cleanedCombinedCode;
+        
+        // Remove method declarations from the analysis
+        var methodDeclarationRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)\s*\{?", RegexOptions.Compiled);
+        codeWithoutDeclarations = methodDeclarationRegex.Replace(codeWithoutDeclarations, "");
+        
+        // Remove class declarations too
+        var classDeclarationRegex = new Regex(@"(public|internal|private|protected)?\s+class\s+(\w+)", RegexOptions.Compiled);
+        codeWithoutDeclarations = classDeclarationRegex.Replace(codeWithoutDeclarations, "");
+        
+        // Second pass: check usage across ALL projects
+        var usedClasses = new HashSet<string>();
+        var usedMethods = new HashSet<string>();
+        
+        // Analyze class usage patterns
+        foreach (var classKey in allDeclaredClasses.Keys)
+        {
+            var className = classKey.Split('_')[0];
+            
+            // Look for class usage patterns
+            var classUsagePatterns = new[]
+            {
+                $@"\bnew\s+{Regex.Escape(className)}\s*\(",  // new ClassName()
+                $@"\b{Regex.Escape(className)}\s+\w+",      // ClassName variable
+                $@":\s*{Regex.Escape(className)}\b",        // inheritance
+                $@"<{Regex.Escape(className)}>",            // generic parameter
+                $@"\({Regex.Escape(className)}\s+",         // parameter type
+                $@"\b{Regex.Escape(className)}\.",          // static access
+                $@"I{Regex.Escape(className)}\b",           // Interface reference (IClassName)
+                $@"{Regex.Escape(className)}\s*>",          // Generic constraint
+            };
+            
+            foreach (var pattern in classUsagePatterns)
+            {
+                if (Regex.IsMatch(codeWithoutDeclarations, pattern, RegexOptions.IgnoreCase))
+                {
+                    usedClasses.Add(classKey);
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Class {className} marked as USED (cross-project)");
+                    }
+                    break;
+                }
+            }
+        }
+        
+        // Analyze method usage patterns
+        foreach (var methodKey in allDeclaredMethods.Keys)
+        {
+            var methodName = methodKey.Split('_')[0];
+            
+            // Look for method call patterns
+            var methodUsagePatterns = new[]
+            {
+                $@"\b{Regex.Escape(methodName)}\s*\(",      // methodName()
+                $@"\.{Regex.Escape(methodName)}\s*\(",     // .methodName()
+                $@"\b{Regex.Escape(methodName)}\s*;",      // delegate reference
+                $@"=>\s*{Regex.Escape(methodName)}\s*\(",  // lambda expression
+            };
+            
+            foreach (var pattern in methodUsagePatterns)
+            {
+                if (Regex.IsMatch(codeWithoutDeclarations, pattern, RegexOptions.IgnoreCase))
+                {
+                    usedMethods.Add(methodKey);
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Method {methodName} marked as USED (cross-project)");
+                    }
+                    break;
+                }
+            }
+        }
+        
+        if (_verbose)
+        {
+            Console.WriteLine($"Cross-project analysis: {usedClasses.Count} used classes, {usedMethods.Count} used methods");
+        }
+        
+        // Third pass: identify dead code and update project results
+        foreach (var projectResult in allProjectResults)
+        {
+            foreach (var fileResult in projectResult.FileResults)
+            {
+                // Clear previous dead code results
+                fileResult.DeadClasses.Clear();
+                fileResult.DeadMethods.Clear();
+                fileResult.PotentialDeadClassCount = 0;
+                fileResult.PotentialDeadMethodCount = 0;
+                
+                // Check for dead classes in this file
+                foreach (var kvp in allDeclaredClasses)
+                {
+                    var classKey = kvp.Key;
+                    var (filePath, lineNumber, projectPath) = kvp.Value;
+                    var className = classKey.Split('_')[0];
+                    
+                    if (filePath == fileResult.FilePath && !usedClasses.Contains(classKey))
+                    {
+                        var deadCodeItem = new DeadCodeItem
+                        {
+                            Name = className,
+                            Type = "Class",
+                            LineNumber = lineNumber,
+                            ColumnNumber = 1,
+                            ConfidencePercentage = 85,
+                            Reason = "Class with no apparent references across all projects in the solution"
+                        };
+                        
+                        fileResult.DeadClasses.Add(deadCodeItem);
+                        fileResult.PotentialDeadClassCount++;
+                        
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"DEAD CLASS (cross-project): {className} in {Path.GetFileName(filePath)}:{lineNumber}");
+                        }
+                    }
+                }
+                
+                // Check for dead methods in this file
+                foreach (var kvp in allDeclaredMethods)
+                {
+                    var methodKey = kvp.Key;
+                    var (filePath, lineNumber, accessibility, projectPath) = kvp.Value;
+                    var methodName = methodKey.Split('_')[0];
+                    
+                    if (filePath == fileResult.FilePath && !usedMethods.Contains(methodKey))
+                    {
+                        // Flag private, internal, and public methods as potential dead code
+                        if (accessibility == "private" || accessibility == "internal" || accessibility == "public")
+                        {
+                            var confidence = accessibility switch
+                            {
+                                "private" => 90,
+                                "internal" => 75,
+                                "public" => 60, // Lower confidence for public methods as they might be part of API
+                                _ => 50
+                            };
+                            
+                            var deadCodeItem = new DeadCodeItem
+                            {
+                                Name = methodName,
+                                Type = "Method",
+                                LineNumber = lineNumber,
+                                ColumnNumber = 1,
+                                ConfidencePercentage = confidence,
+                                Reason = $"{accessibility.Substring(0, 1).ToUpper()}{accessibility.Substring(1)} method with no apparent references across all projects in the solution"
+                            };
+                            
+                            fileResult.DeadMethods.Add(deadCodeItem);
+                            fileResult.PotentialDeadMethodCount++;
+                            
+                            if (_verbose)
+                            {
+                                Console.WriteLine($"DEAD METHOD (cross-project): {accessibility} {methodName} in {Path.GetFileName(filePath)}:{lineNumber}");
+                            }
+                        }
+                    }
+                }
+                
+                // Update project totals
+                projectResult.PotentialDeadMethods += fileResult.PotentialDeadMethodCount;
+                projectResult.PotentialDeadClasses += fileResult.PotentialDeadClassCount;
+            }
+        }
+        
+        await Task.CompletedTask;
     }
 } 
