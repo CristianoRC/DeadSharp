@@ -663,6 +663,11 @@ $RECYCLE.BIN/
 # Windows shortcuts
 *.lnk
 
+
+### Rider ###
+*/.idea/*
+
+
 ### VisualStudio ###
 
 # User-specific files
