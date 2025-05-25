@@ -19,10 +19,11 @@ public static class AnalyzeCommand
     /// <param name="ignoreAzureFunctions">Whether to ignore Azure Function files during analysis</param>
     /// <param name="ignoreControllers">Whether to ignore Controller files during analysis</param>
     /// <param name="enhancedDiDetection">Whether to enable enhanced dependency injection detection</param>
+    /// <param name="enhancedDataFlow">Whether to enable enhanced data flow analysis</param>
     /// <param name="outputPath">Optional path to save the analysis results in JSON format</param>
     public static async Task ExecuteAsync(string projectPath, bool verbose, bool ignoreTests = false, 
         bool ignoreMigrations = false, bool ignoreAzureFunctions = false, bool ignoreControllers = false,
-        bool enhancedDiDetection = false, string? outputPath = null)
+        bool enhancedDiDetection = false, bool enhancedDataFlow = false, string? outputPath = null)
     {
         try
         {
@@ -50,13 +51,17 @@ public static class AnalyzeCommand
                 {
                     Console.WriteLine("Enhanced dependency injection detection enabled");
                 }
+                if (enhancedDataFlow)
+                {
+                    Console.WriteLine("Enhanced data flow analysis enabled (advanced semantic analysis)");
+                }
                 if (!string.IsNullOrEmpty(outputPath))
                 {
                     Console.WriteLine($"Results will be saved to: {outputPath}");
                 }
             }
 
-            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, outputPath);
+            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, enhancedDataFlow, outputPath);
         }
         catch (Exception ex)
         {
@@ -71,9 +76,9 @@ public static class AnalyzeCommand
 
     private static async Task AnalyzeProjectAsync(string projectPath, bool verbose, bool ignoreTests, 
         bool ignoreMigrations, bool ignoreAzureFunctions, bool ignoreControllers, bool enhancedDiDetection,
-        string? outputPath)
+        bool enhancedDataFlow, string? outputPath)
     {
-        var analyzer = new CodeAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection);
+        var analyzer = new CodeAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, enhancedDataFlow);
 
         Console.WriteLine($"Starting analysis of project at {projectPath}...");
         var stopwatch = Stopwatch.StartNew();

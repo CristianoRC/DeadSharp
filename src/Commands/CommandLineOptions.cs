@@ -43,6 +43,11 @@ public static class CommandLineOptions
     public static Option<bool> EnhancedDiDetection { get; } = CreateEnhancedDiDetectionOption();
     
     /// <summary>
+    /// Option for enabling enhanced data flow analysis (advanced semantic analysis)
+    /// </summary>
+    public static Option<bool> EnhancedDataFlow { get; } = CreateEnhancedDataFlowOption();
+    
+    /// <summary>
     /// Option for specifying the output path for JSON results
     /// </summary>
     public static Option<string> OutputPath { get; } = CreateOutputPathOption();
@@ -62,6 +67,7 @@ public static class CommandLineOptions
         rootCommand.AddOption(IgnoreAzureFunctions);
         rootCommand.AddOption(IgnoreControllers);
         rootCommand.AddOption(EnhancedDiDetection);
+        rootCommand.AddOption(EnhancedDataFlow);
         rootCommand.AddOption(OutputPath);
         
         return rootCommand;
@@ -180,6 +186,17 @@ public static class CommandLineOptions
             description: "Enable enhanced dependency injection detection to better identify classes used only in DI containers");
         
         option.AddAlias("-ed");
+        
+        return option;
+    }
+    
+    private static Option<bool> CreateEnhancedDataFlowOption()
+    {
+        var option = new Option<bool>(
+            name: "--enhanced-dataflow",
+            description: "Enable enhanced data flow analysis using deep semantic analysis to detect complex usage patterns through indirect references, factory patterns, and control flow tracking");
+        
+        option.AddAlias("-edf");
         
         return option;
     }

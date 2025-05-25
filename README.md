@@ -2,6 +2,18 @@
 
 DeadSharp is a command-line tool for analyzing C# projects and identifying dead code.
 
+## 🆕 What's New
+
+**Enhanced Data Flow Analysis** - Advanced semantic analysis capabilities! The new `--enhanced-dataflow` option provides sophisticated pattern detection that significantly reduces false positives by tracking:
+
+- 🏭 **Factory patterns** - Detects classes used via `factory.Create<T>()`
+- 🔄 **Data flow tracking** - Follows variable usage through complex control flows  
+- 🎯 **Interface implementations** - Automatically marks implementations when interfaces are used
+- 🧩 **Generic type parameters** - Detects usage in generic constraints and type arguments
+- 🔗 **Lambda expressions** - Deep analysis of delegate and lambda usage
+
+**Result**: Much more accurate dead code detection with fewer false positives!
+
 ## Installation
 
 ### From NuGet (when published)
@@ -45,14 +57,17 @@ deadsharp -p /path/to/your/project --ignore-controllers
 # Enable enhanced dependency injection detection
 deadsharp -p /path/to/your/project --enhanced-di-detection
 
+# Enable enhanced data flow analysis (advanced semantic analysis)
+deadsharp -p /path/to/your/project --enhanced-dataflow
+
 # Save results to a JSON file
 deadsharp -p /path/to/your/project --output results.json
 
 # Combine multiple options
-deadsharp -p /path/to/your/project -v --ignore-tests --ignore-migrations --ignore-controllers --enhanced-di-detection --output results.json
+deadsharp -p /path/to/your/project -v --ignore-tests --ignore-migrations --ignore-controllers --enhanced-di-detection --enhanced-dataflow --output results.json
 
 # Use short aliases
-deadsharp -p /path/to/your/project -v -i -im -iaf -ic -ed -o results.json
+deadsharp -p /path/to/your/project -v -i -im -iaf -ic -ed -edf -o results.json
 ```
 
 ### Important Note About Large Projects
@@ -202,6 +217,99 @@ public class UserController : ControllerBase
 
 With `--enhanced-di-detection`, the tool will correctly identify that `EmailService` is used through the DI container and won't mark it as dead code.
 
+#### Enhanced Data Flow Analysis (`--enhanced-dataflow` / `-edf`) 🆕
+
+**NEW FEATURE**: Advanced semantic data flow analysis that significantly reduces false positives by tracking complex usage patterns that basic static analysis might miss. This feature uses deep code analysis to understand how classes and methods are used through indirect references, complex control flows, and sophisticated programming patterns.
+
+Use the `--enhanced-dataflow` option to enable advanced semantic analysis:
+
+```bash
+deadsharp -p /path/to/project --enhanced-dataflow
+```
+
+This feature detects usage through sophisticated patterns:
+
+**Factory Pattern Detection:**
+```csharp
+// Without enhanced data flow: FactoryCreatedService appears unused
+public class ServiceFactory
+{
+    public T Create<T>() where T : new() => new T();
+}
+
+public class FactoryCreatedService
+{
+    public void Execute() { /* implementation */ }
+}
+
+// Usage that enhanced data flow detects:
+var factory = new ServiceFactory();
+var service = factory.Create<FactoryCreatedService>(); // ✅ Detected!
+service.Execute();
+```
+
+**Method Return Value Tracking:**
+```csharp
+// Enhanced data flow tracks usage through return values
+private static IService GetService()
+{
+    return new MyService(); // ✅ MyService marked as used
+}
+
+var service = GetService(); // ✅ Tracks this assignment
+service.DoWork(); // ✅ And subsequent usage
+```
+
+**Interface Implementation Detection:**
+```csharp
+// Enhanced data flow automatically marks implementations as used
+public interface IService { void DoWork(); }
+public class MyService : IService { /* implementation */ }
+
+// When interface is used, implementation is marked as used
+IService service = new MyService(); // ✅ Both interface and implementation detected
+```
+
+**Lambda and Delegate Usage:**
+```csharp
+// Detects usage within lambda expressions and delegates
+services.Where(s => s.IsActive()).Select(s => s.Process()); // ✅ IsActive and Process detected
+```
+
+**Conditional Flow Analysis:**
+```csharp
+// Tracks usage through complex control flows
+if (condition)
+{
+    var service = GetSpecialService(); // ✅ Detected even in conditional blocks
+    service.Execute();
+}
+```
+
+**Generic Type Parameter Detection:**
+```csharp
+// Detects classes used as generic type parameters
+public class Repository<T> where T : class { }
+var repo = new Repository<MyEntity>(); // ✅ MyEntity marked as used
+```
+
+**Comparison with Basic Analysis:**
+
+| Scenario | Basic Analysis | Enhanced Data Flow |
+|----------|----------------|-------------------|
+| `factory.Create<Service>()` | ❌ Service appears unused | ✅ Service detected as used |
+| Interface implementations | ❌ Implementation appears unused | ✅ Implementation detected via interface |
+| Method return tracking | ❌ Limited tracking | ✅ Full data flow tracking |
+| Lambda expressions | ❌ Basic pattern matching | ✅ Deep lambda analysis |
+| Generic constraints | ❌ Often missed | ✅ Comprehensive detection |
+
+**Performance Note:** Enhanced data flow analysis requires deep semantic analysis using the Roslyn compiler platform and may take longer on large projects, but provides significantly more accurate results by understanding the actual code semantics rather than just pattern matching.
+
+**Best Practice:** Combine with other options for optimal results:
+```bash
+deadsharp -p /path/to/project --enhanced-di-detection --enhanced-dataflow --ignore-tests
+```
+
 #### Combining Ignore Options
 
 You can combine multiple ignore options to fine-tune your analysis:
@@ -213,8 +321,11 @@ deadsharp -p /path/to/project --ignore-tests --ignore-migrations --ignore-azure-
 # Using short aliases
 deadsharp -p /path/to/project -i -im -iaf -ic
 
-# Include enhanced DI detection for better accuracy
-deadsharp -p /path/to/project --ignore-tests --ignore-controllers --enhanced-di-detection
+# Include enhanced analysis for maximum accuracy
+deadsharp -p /path/to/project --ignore-tests --ignore-controllers --enhanced-di-detection --enhanced-dataflow
+
+# Ultimate configuration for production projects
+deadsharp -p /path/to/project -v -i -im -ic -ed -edf -o results.json
 ```
 
 ## Features
@@ -230,6 +341,7 @@ deadsharp -p /path/to/project --ignore-tests --ignore-controllers --enhanced-di-
   - ✅ Ignore Azure Functions (`--ignore-azure-functions`)
   - ✅ Ignore Controllers (`--ignore-controllers`)
 - ✅ Enhanced dependency injection detection (`--enhanced-di-detection`)
+- ✅ **NEW**: Enhanced data flow analysis (`--enhanced-dataflow`) - Advanced semantic analysis capabilities
 - ✅ Short aliases for all options
 - ✅ Modular and extensible architecture
 - ✅ Both Roslyn-based semantic analysis and fallback regex analysis
@@ -243,8 +355,10 @@ src/
 │   ├── CommandLineOptions.cs    # Command line options configuration
 │   └── AnalyzeCommand.cs        # Analysis command logic
 └── Analyzer/
-    ├── CodeAnalyzer.cs          # Main code analyzer
-    └── AnalysisResult.cs        # Analysis result models
+    ├── CodeAnalyzer.cs              # Main code analyzer
+    ├── RoslynAnalyzer.cs            # Roslyn-based semantic analysis
+    ├── EnhancedDataFlowAnalyzer.cs  # Advanced data flow analysis (NEW)
+    └── AnalysisResult.cs            # Analysis result models
 ```
 
 ## Development

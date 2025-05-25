@@ -14,10 +14,12 @@ public class CodeAnalyzer
     private readonly bool _ignoreAzureFunctions;
     private readonly bool _ignoreControllers;
     private readonly bool _enhancedDiDetection;
+    private readonly bool _enhancedDataFlow;
     private readonly RoslynAnalyzer _roslynAnalyzer;
     
     public CodeAnalyzer(bool verbose = false, bool ignoreTests = false, bool ignoreMigrations = false, 
-        bool ignoreAzureFunctions = false, bool ignoreControllers = false, bool enhancedDiDetection = false)
+        bool ignoreAzureFunctions = false, bool ignoreControllers = false, bool enhancedDiDetection = false,
+        bool enhancedDataFlow = false)
     {
         _verbose = verbose;
         _ignoreTests = ignoreTests;
@@ -25,7 +27,8 @@ public class CodeAnalyzer
         _ignoreAzureFunctions = ignoreAzureFunctions;
         _ignoreControllers = ignoreControllers;
         _enhancedDiDetection = enhancedDiDetection;
-        _roslynAnalyzer = new RoslynAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection);
+        _enhancedDataFlow = enhancedDataFlow;
+        _roslynAnalyzer = new RoslynAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, enhancedDataFlow);
     }
     
     /// <summary>
@@ -328,12 +331,12 @@ public class CodeAnalyzer
             var sourceCode = await File.ReadAllTextAsync(sourceFilePath);
             
             // Basic pattern matching for fallback analysis
-            // Count classes
-            var classMatches = Regex.Matches(sourceCode, @"(public|internal|private|protected)?\s+class\s+(\w+)");
+            // Count classes (including those without explicit access modifiers)
+            var classMatches = Regex.Matches(sourceCode, @"(?:public|internal|private|protected)?\s*class\s+(\w+)", RegexOptions.Multiline);
             result.ClassCount = classMatches.Count;
             
-            // Count methods
-            var methodMatches = Regex.Matches(sourceCode, @"(public|internal|private|protected)?\s+(static\s+)?\w+\s+\w+\s*\([^)]*\)");
+            // Count methods (including those without explicit access modifiers)
+            var methodMatches = Regex.Matches(sourceCode, @"(?:public|internal|private|protected)?\s*(?:static\s+)?(?:async\s+)?(?:\w+(?:<[^>]+>)?\s+)?(\w+)\s*\([^)]*\)\s*(?:\{|=>)", RegexOptions.Multiline);
             result.MethodCount = methodMatches.Count;
             
             // Note: Dead code detection is now performed at the project level in PerformCrossFileDeadCodeAnalysis

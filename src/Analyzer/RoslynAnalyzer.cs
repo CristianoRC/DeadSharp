@@ -17,10 +17,12 @@ public class RoslynAnalyzer
     private readonly bool _ignoreAzureFunctions;
     private readonly bool _ignoreControllers;
     private readonly bool _enhancedDiDetection;
+    private readonly bool _enhancedDataFlow;
     private static bool _msbuildRegistered = false;
 
     public RoslynAnalyzer(bool verbose = false, bool ignoreTests = false, bool ignoreMigrations = false, 
-        bool ignoreAzureFunctions = false, bool ignoreControllers = false, bool enhancedDiDetection = false)
+        bool ignoreAzureFunctions = false, bool ignoreControllers = false, bool enhancedDiDetection = false,
+        bool enhancedDataFlow = false)
     {
         _verbose = verbose;
         _ignoreTests = ignoreTests;
@@ -28,6 +30,7 @@ public class RoslynAnalyzer
         _ignoreAzureFunctions = ignoreAzureFunctions;
         _ignoreControllers = ignoreControllers;
         _enhancedDiDetection = enhancedDiDetection;
+        _enhancedDataFlow = enhancedDataFlow;
         EnsureMSBuildRegistered();
     }
 
@@ -327,6 +330,17 @@ public class RoslynAnalyzer
             if (_enhancedDiDetection)
             {
                 await AnalyzeDependencyInjectionPatterns(root, semanticModel, allSymbols, usedSymbols, result);
+            }
+            
+            // Enhanced Data Flow Analysis
+            if (_enhancedDataFlow)
+            {
+                var dataFlowAnalyzer = new EnhancedDataFlowAnalyzer(semanticModel, _verbose);
+                var additionalUsedSymbols = await dataFlowAnalyzer.AnalyzeAdvancedDataFlowAsync(root, allSymbols);
+                foreach (var symbol in additionalUsedSymbols)
+                {
+                    usedSymbols.Add(symbol);
+                }
             }
 
             if (_verbose)
