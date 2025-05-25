@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace DeadSharp.Analyzer;
@@ -201,7 +200,7 @@ public class CodeAnalyzer
         return result;
     }
     
-    private bool IsGeneratedFile(string filePath)
+    private static bool IsGeneratedFile(string filePath)
     {
         // Check if file is in obj/ or bin/ directory
         if (filePath.Contains(Path.Combine("obj", "")) || filePath.Contains(Path.Combine("bin", "")))
