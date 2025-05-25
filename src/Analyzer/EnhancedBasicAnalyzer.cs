@@ -139,7 +139,22 @@ public class EnhancedBasicAnalyzer
                     if (_verbose)
                     {
                         Console.WriteLine($"  Interface usage detected: {className} used via {interfaceName}");
-                    }aso específico, o DeadSharp está funcionando bem e encontrando código potencialmente morto, mas ainda requer verificação manual dos resultados para
+                    }
+                }
+            }
+        }
+    }
+    
+    private void DetectGenericTypeUsage(string code, HashSet<string> usedClasses)
+    {
+        // Pattern: GenericType<T> or GenericType<T, U>
+        var genericPattern = new Regex(@"<(\w+)>", RegexOptions.Multiline);
+        var matches = genericPattern.Matches(code);
+        
+        foreach (Match match in matches)
+        {
+            var className = match.Groups[1].Value;
+            
             // Skip common generic type parameters like T, K, V
             if (className.Length > 1 && !IsCommonGenericParameter(className))
             {
