@@ -277,72 +277,179 @@ public class CodeAnalyzer
         return result;
     }
     
-    private static async Task PerformBasicDeadCodeDetection(string sourceCode, FileAnalysisResult result)
+    private async Task PerformBasicDeadCodeDetection(string sourceCode, FileAnalysisResult result)
     {
         // Very basic dead code detection using regex patterns
         // This is a fallback when Roslyn analysis is not available
         
         var lines = sourceCode.Split('\n');
         
+        if (_verbose)
+        {
+            Console.WriteLine($"  Performing basic dead code detection on {result.RelativePath}");
+        }
+        
+        // Remove comments and strings to avoid false positives
+        var cleanedCode = RemoveCommentsAndStrings(sourceCode);
+        var cleanedLines = cleanedCode.Split('\n');
+        
         // Find private methods that might be unused
         var privateMethodRegex = new Regex(@"private\s+(?:static\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)", RegexOptions.Compiled);
+        var internalMethodRegex = new Regex(@"internal\s+(?:static\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)", RegexOptions.Compiled);
         var methodCalls = new HashSet<string>();
         
-        // First pass: collect all method calls
-        foreach (var line in lines)
+        // First pass: collect all method calls from cleaned code
+        foreach (var line in cleanedLines)
         {
-            var callMatches = Regex.Matches(line, @"(\w+)\s*\(");
+            // Skip method declarations themselves
+            if (privateMethodRegex.IsMatch(line) || internalMethodRegex.IsMatch(line))
+                continue;
+                
+            // Look for method calls (word followed by opening parenthesis)
+            // But exclude method declarations
+            var callMatches = Regex.Matches(line, @"(?<!(?:private|internal|public|protected|static)\s+(?:static\s+)?(?:\w+\s+)?)(\w+)\s*\(");
             foreach (Match match in callMatches)
             {
-                methodCalls.Add(match.Groups[1].Value);
+                var methodName = match.Groups[1].Value;
+                // Skip common keywords and types
+                if (!IsKeywordOrType(methodName))
+                {
+                    methodCalls.Add(methodName);
+                }
+            }
+            
+            // Also look for method references without parentheses (delegates, etc.)
+            var refMatches = Regex.Matches(line, @"\.(\w+)\s*[;,\)\]\}]");
+            foreach (Match match in refMatches)
+            {
+                var methodName = match.Groups[1].Value;
+                if (!IsKeywordOrType(methodName))
+                {
+                    methodCalls.Add(methodName);
+                }
             }
         }
         
-        // Second pass: find private methods that are not called
-        for (var i = 0; i < lines.Length; i++)
+        if (_verbose)
+        {
+            Console.WriteLine($"    Found {methodCalls.Count} method calls: {string.Join(", ", methodCalls.Take(10))}");
+        }
+        
+        // Second pass: find private and internal methods that are not called
+        for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
-            var match = privateMethodRegex.Match(line);
             
-            if (match.Success)
+            // Check private methods
+            var privateMatch = privateMethodRegex.Match(line);
+            if (privateMatch.Success)
             {
-                var methodName = match.Groups[1].Value;
+                var methodName = privateMatch.Groups[1].Value;
+                
+                if (_verbose)
+                {
+                    Console.WriteLine($"    Found private method: {methodName}");
+                }
                 
                 // Skip special methods
-                if (methodName == "Main" || methodName.StartsWith("get_") || methodName.StartsWith("set_"))
+                if (IsSpecialMethod(methodName))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"      Skipping special method: {methodName}");
+                    }
                     continue;
+                }
                 
                 if (!methodCalls.Contains(methodName))
                 {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"      DEAD CODE FOUND: {methodName} (not in call list)");
+                    }
+                    
                     var deadCodeItem = new DeadCodeItem
                     {
                         Name = methodName,
                         Type = "Method",
                         LineNumber = i + 1,
-                        ColumnNumber = match.Index + 1,
-                        ConfidencePercentage = 60, // Lower confidence for basic analysis
+                        ColumnNumber = privateMatch.Index + 1,
+                        ConfidencePercentage = 85, // Higher confidence for private methods
                         Reason = "Private method with no apparent references (basic analysis)"
                     };
                     
                     result.DeadMethods.Add(deadCodeItem);
                     result.PotentialDeadMethodCount++;
                 }
+                else if (_verbose)
+                {
+                    Console.WriteLine($"      Method {methodName} is used");
+                }
+            }
+            
+            // Check internal methods
+            var internalMatch = internalMethodRegex.Match(line);
+            if (internalMatch.Success)
+            {
+                var methodName = internalMatch.Groups[1].Value;
+                
+                if (_verbose)
+                {
+                    Console.WriteLine($"    Found internal method: {methodName}");
+                }
+                
+                // Skip special methods
+                if (IsSpecialMethod(methodName))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"      Skipping special method: {methodName}");
+                    }
+                    continue;
+                }
+                
+                if (!methodCalls.Contains(methodName))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"      DEAD CODE FOUND: {methodName} (not in call list)");
+                    }
+                    
+                    var deadCodeItem = new DeadCodeItem
+                    {
+                        Name = methodName,
+                        Type = "Method",
+                        LineNumber = i + 1,
+                        ColumnNumber = internalMatch.Index + 1,
+                        ConfidencePercentage = 70, // Medium confidence for internal methods
+                        Reason = "Internal method with no apparent references (basic analysis)"
+                    };
+                    
+                    result.DeadMethods.Add(deadCodeItem);
+                    result.PotentialDeadMethodCount++;
+                }
+                else if (_verbose)
+                {
+                    Console.WriteLine($"      Method {methodName} is used");
+                }
             }
         }
         
         // Find private classes that might be unused
         var privateClassRegex = new Regex(@"private\s+class\s+(\w+)", RegexOptions.Compiled);
+        var internalClassRegex = new Regex(@"internal\s+class\s+(\w+)", RegexOptions.Compiled);
         var classUsages = new HashSet<string>();
         
-        // Collect class usages
-        foreach (var line in lines)
+        // Collect class usages from cleaned code
+        foreach (var line in cleanedLines)
         {
-            var usageMatches = Regex.Matches(line, @"new\s+(\w+)\s*\(|:\s*(\w+)|<(\w+)>|(\w+)\s+\w+\s*=");
+            // Look for class instantiations, inheritance, type parameters, etc.
+            var usageMatches = Regex.Matches(line, @"new\s+(\w+)\s*\(|:\s*(\w+)|<(\w+)>|(\w+)\s+\w+\s*[=;]");
             foreach (Match match in usageMatches)
             {
-                for (var g = 1; g < match.Groups.Count; g++)
+                for (int g = 1; g < match.Groups.Count; g++)
                 {
-                    if (match.Groups[g].Success)
+                    if (match.Groups[g].Success && !string.IsNullOrWhiteSpace(match.Groups[g].Value))
                     {
                         classUsages.Add(match.Groups[g].Value);
                     }
@@ -350,35 +457,125 @@ public class CodeAnalyzer
             }
         }
         
-        // Find unused private classes
-        for (var i = 0; i < lines.Length; i++)
+        if (_verbose)
+        {
+            Console.WriteLine($"    Found {classUsages.Count} class usages: {string.Join(", ", classUsages.Take(10))}");
+        }
+        
+        // Find unused private and internal classes
+        for (int i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
-            var match = privateClassRegex.Match(line);
             
-            if (match.Success)
+            // Check private classes
+            var privateClassMatch = privateClassRegex.Match(line);
+            if (privateClassMatch.Success)
             {
-                var className = match.Groups[1].Value;
+                var className = privateClassMatch.Groups[1].Value;
+                
+                if (_verbose)
+                {
+                    Console.WriteLine($"    Found private class: {className}");
+                }
                 
                 if (!classUsages.Contains(className))
                 {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"      DEAD CODE FOUND: {className} (not in usage list)");
+                    }
+                    
                     var deadCodeItem = new DeadCodeItem
                     {
                         Name = className,
                         Type = "Class",
                         LineNumber = i + 1,
-                        ColumnNumber = match.Index + 1,
-                        ConfidencePercentage = 50, // Lower confidence for basic analysis
+                        ColumnNumber = privateClassMatch.Index + 1,
+                        ConfidencePercentage = 80, // High confidence for private classes
                         Reason = "Private class with no apparent references (basic analysis)"
                     };
                     
                     result.DeadClasses.Add(deadCodeItem);
                     result.PotentialDeadClassCount++;
                 }
+                else if (_verbose)
+                {
+                    Console.WriteLine($"      Class {className} is used");
+                }
+            }
+            
+            // Check internal classes (but only if they're not used externally)
+            var internalClassMatch = internalClassRegex.Match(line);
+            if (internalClassMatch.Success)
+            {
+                var className = internalClassMatch.Groups[1].Value;
+                
+                if (_verbose)
+                {
+                    Console.WriteLine($"    Found internal class: {className}");
+                }
+                
+                if (!classUsages.Contains(className))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"      POTENTIALLY DEAD CODE: {className} (not in usage list)");
+                    }
+                    
+                    var deadCodeItem = new DeadCodeItem
+                    {
+                        Name = className,
+                        Type = "Class",
+                        LineNumber = i + 1,
+                        ColumnNumber = internalClassMatch.Index + 1,
+                        ConfidencePercentage = 60, // Lower confidence for internal classes
+                        Reason = "Internal class with no apparent references (basic analysis)"
+                    };
+                    
+                    result.DeadClasses.Add(deadCodeItem);
+                    result.PotentialDeadClassCount++;
+                }
+                else if (_verbose)
+                {
+                    Console.WriteLine($"      Class {className} is used");
+                }
             }
         }
         
+        if (_verbose)
+        {
+            Console.WriteLine($"    Dead code detection complete: {result.PotentialDeadMethodCount} dead methods, {result.PotentialDeadClassCount} dead classes");
+        }
+        
         await Task.CompletedTask;
+    }
+    
+    private string RemoveCommentsAndStrings(string sourceCode)
+    {
+        // Remove single-line comments
+        var withoutSingleLineComments = Regex.Replace(sourceCode, @"//.*$", "", RegexOptions.Multiline);
+        
+        // Remove multi-line comments
+        var withoutMultiLineComments = Regex.Replace(withoutSingleLineComments, @"/\*.*?\*/", "", RegexOptions.Singleline);
+        
+        // Remove string literals (both single and double quotes)
+        var withoutStrings = Regex.Replace(withoutMultiLineComments, @"""([^""\\]|\\.)*""|'([^'\\]|\\.)*'", "\"\"", RegexOptions.Singleline);
+        
+        return withoutStrings;
+    }
+    
+    private bool IsSpecialMethod(string methodName)
+    {
+        return methodName == "Main" || 
+               methodName.StartsWith("get_") || 
+               methodName.StartsWith("set_") ||
+               methodName.StartsWith("add_") ||
+               methodName.StartsWith("remove_") ||
+               methodName == "ToString" ||
+               methodName == "GetHashCode" ||
+               methodName == "Equals" ||
+               methodName == "Dispose" ||
+               methodName == "Finalize";
     }
     
     private static bool IsGeneratedFile(string filePath)
@@ -404,5 +601,20 @@ public class CodeAnalyzer
         {
             return false;
         }
+    }
+    
+    private bool IsKeywordOrType(string methodName)
+    {
+        var keywords = new HashSet<string> 
+        { 
+            "void", "int", "string", "bool", "double", "float", "char", "object", 
+            "var", "if", "else", "for", "foreach", "while", "do", "switch", "case",
+            "try", "catch", "finally", "throw", "return", "break", "continue",
+            "class", "interface", "struct", "enum", "namespace", "using",
+            "public", "private", "protected", "internal", "static", "readonly",
+            "const", "virtual", "override", "abstract", "sealed", "partial",
+            "new", "this", "base", "null", "true", "false"
+        };
+        return keywords.Contains(methodName.ToLower());
     }
 } 
