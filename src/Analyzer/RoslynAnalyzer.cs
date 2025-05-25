@@ -160,7 +160,7 @@ public class RoslynAnalyzer
         return result;
     }
 
-    private List<ISymbol> CollectDeclaredSymbols(SyntaxNode root, SemanticModel semanticModel)
+    private static List<ISymbol> CollectDeclaredSymbols(SyntaxNode root, SemanticModel semanticModel)
     {
         var symbols = new List<ISymbol>();
 
@@ -292,7 +292,7 @@ public class RoslynAnalyzer
         }
     }
 
-    private bool IsUserDefinedSymbol(ISymbol symbol)
+    private static bool IsUserDefinedSymbol(ISymbol symbol)
     {
         // Skip compiler-generated symbols
         if (symbol.IsImplicitlyDeclared) return false;
@@ -312,7 +312,7 @@ public class RoslynAnalyzer
         return true;
     }
 
-    private string GetSymbolType(ISymbol symbol)
+    private static string GetSymbolType(ISymbol symbol)
     {
         return symbol switch
         {
@@ -324,10 +324,10 @@ public class RoslynAnalyzer
         };
     }
 
-    private int CalculateConfidence(ISymbol symbol)
+    private static int CalculateConfidence(ISymbol symbol)
     {
         // Base confidence
-        int confidence = 70;
+        var confidence = 70;
 
         // Increase confidence for private members
         if (symbol.DeclaredAccessibility == Accessibility.Private)
@@ -344,7 +344,7 @@ public class RoslynAnalyzer
         return Math.Max(10, Math.Min(95, confidence));
     }
 
-    private string GetDeadCodeReason(ISymbol symbol)
+    private static string GetDeadCodeReason(ISymbol symbol)
     {
         var accessibility = symbol.DeclaredAccessibility.ToString().ToLower();
         return $"No references found to this {accessibility} {GetSymbolType(symbol).ToLower()}";

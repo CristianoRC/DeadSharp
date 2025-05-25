@@ -38,9 +38,9 @@ public class CodeAnalyzer
             }
             
             // 1. Identify if it's a solution or project file
-            bool isSolution = projectPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase);
-            bool isProject = projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
-            bool isDirectory = Directory.Exists(projectPath);
+            var isSolution = projectPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase);
+            var isProject = projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+            var isDirectory = Directory.Exists(projectPath);
             
             if (isDirectory)
             {
@@ -277,7 +277,7 @@ public class CodeAnalyzer
         return result;
     }
     
-    private async Task PerformBasicDeadCodeDetection(string sourceCode, FileAnalysisResult result)
+    private static async Task PerformBasicDeadCodeDetection(string sourceCode, FileAnalysisResult result)
     {
         // Very basic dead code detection using regex patterns
         // This is a fallback when Roslyn analysis is not available
@@ -299,7 +299,7 @@ public class CodeAnalyzer
         }
         
         // Second pass: find private methods that are not called
-        for (int i = 0; i < lines.Length; i++)
+        for (var i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
             var match = privateMethodRegex.Match(line);
@@ -340,7 +340,7 @@ public class CodeAnalyzer
             var usageMatches = Regex.Matches(line, @"new\s+(\w+)\s*\(|:\s*(\w+)|<(\w+)>|(\w+)\s+\w+\s*=");
             foreach (Match match in usageMatches)
             {
-                for (int g = 1; g < match.Groups.Count; g++)
+                for (var g = 1; g < match.Groups.Count; g++)
                 {
                     if (match.Groups[g].Success)
                     {
@@ -351,7 +351,7 @@ public class CodeAnalyzer
         }
         
         // Find unused private classes
-        for (int i = 0; i < lines.Length; i++)
+        for (var i = 0; i < lines.Length; i++)
         {
             var line = lines[i];
             var match = privateClassRegex.Match(line);
@@ -381,7 +381,7 @@ public class CodeAnalyzer
         await Task.CompletedTask;
     }
     
-    private bool IsGeneratedFile(string filePath)
+    private static bool IsGeneratedFile(string filePath)
     {
         // Check if file is in obj/ or bin/ directory
         if (filePath.Contains(Path.Combine("obj", "")) || filePath.Contains(Path.Combine("bin", "")))
