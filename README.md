@@ -33,8 +33,20 @@ deadsharp -p /path/to/your/project -v
 # Ignore test projects during analysis
 deadsharp -p /path/to/your/project --ignore-tests
 
-# Combine options
-deadsharp -p /path/to/your/project -v --ignore-tests
+# Ignore database migrations during analysis
+deadsharp -p /path/to/your/project --ignore-migrations
+
+# Ignore Azure Functions during analysis
+deadsharp -p /path/to/your/project --ignore-azure-functions
+
+# Ignore Controllers during analysis
+deadsharp -p /path/to/your/project --ignore-controllers
+
+# Combine multiple ignore options
+deadsharp -p /path/to/your/project -v --ignore-tests --ignore-migrations --ignore-controllers
+
+# Use short aliases
+deadsharp -p /path/to/your/project -v -i -im -iaf -ic
 ```
 
 ### Supported Input Types
@@ -45,7 +57,7 @@ deadsharp -p /path/to/your/project -v --ignore-tests
 
 ### Advanced Options
 
-#### Ignore Test Projects (`--ignore-tests`)
+#### Ignore Test Projects (`--ignore-tests` / `-i`)
 
 By default, the tool analyzes all projects found, including test projects. This can generate many false positives, as test methods are executed by testing frameworks and are not "called" directly in the code.
 
@@ -63,6 +75,61 @@ The tool detects test projects based on:
 - Without `--ignore-tests`: 89 potentially dead methods
 - With `--ignore-tests`: 35 potentially dead methods (54 false positives removed)
 
+#### Ignore Database Migrations (`--ignore-migrations` / `-im`)
+
+Database migration files often contain methods that appear unused but are called by Entity Framework or other ORM frameworks during database updates.
+
+Use the `--ignore-migrations` option to skip migration files during analysis:
+
+```bash
+deadsharp -p /path/to/project --ignore-migrations
+```
+
+The tool detects migration files based on:
+- **Filename patterns**: containing "Migration", "migrations", "_CreateTable", "_AddColumn", etc.
+- **Directory patterns**: located in "Migrations" or "migrations" directories
+- **Content patterns**: containing "MigrationBuilder", "CreateTable", "DropTable", "EntityFramework", etc.
+
+#### Ignore Azure Functions (`--ignore-azure-functions` / `-iaf`)
+
+Azure Function files contain methods that are invoked by the Azure Functions runtime and may appear as dead code to static analysis.
+
+Use the `--ignore-azure-functions` option to skip Azure Function files during analysis:
+
+```bash
+deadsharp -p /path/to/project --ignore-azure-functions
+```
+
+The tool detects Azure Function files based on:
+- **Filename patterns**: containing "Function", "functions", "AzureFunction", etc.
+- **Content patterns**: containing "[FunctionName", "Microsoft.Azure.WebJobs", trigger attributes like "HttpTrigger", "TimerTrigger", etc.
+
+#### Ignore Controllers (`--ignore-controllers` / `-ic`)
+
+Controller files in web applications contain action methods that are invoked by the web framework through routing and may appear unused to static analysis.
+
+Use the `--ignore-controllers` option to skip Controller files during analysis:
+
+```bash
+deadsharp -p /path/to/project --ignore-controllers
+```
+
+The tool detects Controller files based on:
+- **Filename patterns**: ending with "Controller.cs"
+- **Content patterns**: inheriting from "Controller", "ControllerBase", or "ApiController", containing MVC attributes like "[ApiController]", "[HttpGet]", etc.
+
+#### Combining Ignore Options
+
+You can combine multiple ignore options to fine-tune your analysis:
+
+```bash
+# Ignore all framework-specific files
+deadsharp -p /path/to/project --ignore-tests --ignore-migrations --ignore-azure-functions --ignore-controllers
+
+# Using short aliases
+deadsharp -p /path/to/project -i -im -iaf -ic
+```
+
 ## Features
 
 - ✅ Analysis of C# projects to identify unused code
@@ -70,8 +137,14 @@ The tool detects test projects based on:
 - ✅ Detailed reports of dead code locations
 - ✅ Input validation with clear error messages
 - ✅ Verbose mode for detailed analysis
-- ✅ Option to ignore test projects (reduces false positives)
+- ✅ Smart ignore options to reduce false positives:
+  - ✅ Ignore test projects (`--ignore-tests`)
+  - ✅ Ignore database migrations (`--ignore-migrations`)
+  - ✅ Ignore Azure Functions (`--ignore-azure-functions`)
+  - ✅ Ignore Controllers (`--ignore-controllers`)
+- ✅ Short aliases for all options
 - ✅ Modular and extensible architecture
+- ✅ Both Roslyn-based semantic analysis and fallback regex analysis
 
 ## Project Structure
 

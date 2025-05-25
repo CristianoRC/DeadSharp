@@ -10,13 +10,20 @@ public class CodeAnalyzer
 {
     private readonly bool _verbose;
     private readonly bool _ignoreTests;
+    private readonly bool _ignoreMigrations;
+    private readonly bool _ignoreAzureFunctions;
+    private readonly bool _ignoreControllers;
     private readonly RoslynAnalyzer _roslynAnalyzer;
     
-    public CodeAnalyzer(bool verbose = false, bool ignoreTests = false)
+    public CodeAnalyzer(bool verbose = false, bool ignoreTests = false, bool ignoreMigrations = false, 
+        bool ignoreAzureFunctions = false, bool ignoreControllers = false)
     {
         _verbose = verbose;
         _ignoreTests = ignoreTests;
-        _roslynAnalyzer = new RoslynAnalyzer(verbose, ignoreTests);
+        _ignoreMigrations = ignoreMigrations;
+        _ignoreAzureFunctions = ignoreAzureFunctions;
+        _ignoreControllers = ignoreControllers;
+        _roslynAnalyzer = new RoslynAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers);
     }
     
     /// <summary>
@@ -244,6 +251,36 @@ public class CodeAnalyzer
                 if (_verbose)
                 {
                     Console.WriteLine($"Skipping generated file: {sourceFile}");
+                }
+                continue;
+            }
+            
+            // Skip migration files if requested
+            if (_ignoreMigrations && IsMigrationFile(sourceFile))
+            {
+                if (_verbose)
+                {
+                    Console.WriteLine($"Skipping migration file: {sourceFile}");
+                }
+                continue;
+            }
+            
+            // Skip Azure Function files if requested
+            if (_ignoreAzureFunctions && IsAzureFunctionFile(sourceFile))
+            {
+                if (_verbose)
+                {
+                    Console.WriteLine($"Skipping Azure Function file: {sourceFile}");
+                }
+                continue;
+            }
+            
+            // Skip Controller files if requested
+            if (_ignoreControllers && IsControllerFile(sourceFile))
+            {
+                if (_verbose)
+                {
+                    Console.WriteLine($"Skipping Controller file: {sourceFile}");
                 }
                 continue;
             }
@@ -1030,6 +1067,36 @@ public class CodeAnalyzer
                     continue;
                 }
                 
+                // Skip migration files if requested
+                if (_ignoreMigrations && IsMigrationFile(sourceFile))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Skipping migration file: {sourceFile}");
+                    }
+                    continue;
+                }
+                
+                // Skip Azure Function files if requested
+                if (_ignoreAzureFunctions && IsAzureFunctionFile(sourceFile))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Skipping Azure Function file: {sourceFile}");
+                    }
+                    continue;
+                }
+                
+                // Skip Controller files if requested
+                if (_ignoreControllers && IsControllerFile(sourceFile))
+                {
+                    if (_verbose)
+                    {
+                        Console.WriteLine($"    Skipping Controller file: {sourceFile}");
+                    }
+                    continue;
+                }
+                
                 try
                 {
                     var sourceCode = await File.ReadAllTextAsync(sourceFile);
@@ -1486,5 +1553,189 @@ public class CodeAnalyzer
         return frameworkPatterns.Any(pattern => 
             className.EndsWith(pattern, StringComparison.OrdinalIgnoreCase) ||
             className.Contains(pattern, StringComparison.OrdinalIgnoreCase));
+    }
+    
+    /// <summary>
+    /// Determines if a file is a database migration file
+    /// </summary>
+    /// <param name="filePath">Path to the file to check</param>
+    /// <returns>True if the file appears to be a migration file</returns>
+    private bool IsMigrationFile(string filePath)
+    {
+        try
+        {
+            var fileName = Path.GetFileName(filePath);
+            var directoryName = Path.GetDirectoryName(filePath);
+            
+            // Check for common migration file patterns
+            var migrationPatterns = new[]
+            {
+                "Migration", "migration", "Migrations", "migrations",
+                "_CreateTable", "_AddColumn", "_DropTable", "_AlterTable",
+                "_Initial", "_InitialCreate"
+            };
+            
+            // Check filename patterns
+            foreach (var pattern in migrationPatterns)
+            {
+                if (fileName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            
+            // Check directory patterns
+            if (directoryName != null)
+            {
+                var dirPatterns = new[] { "Migrations", "migrations", "Migration", "migration" };
+                foreach (var pattern in dirPatterns)
+                {
+                    if (directoryName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            
+            // Check file content for migration-specific patterns
+            if (File.Exists(filePath))
+            {
+                var content = File.ReadAllText(filePath);
+                var contentPatterns = new[]
+                {
+                    "DbMigration", "Migration", "migrationBuilder", "MigrationBuilder",
+                    "CreateTable", "DropTable", "AddColumn", "DropColumn",
+                    "FluentMigrator", "EntityFramework"
+                };
+                
+                foreach (var pattern in contentPatterns)
+                {
+                    if (content.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+        catch (Exception ex)
+        {
+            if (_verbose)
+            {
+                Console.WriteLine($"Error checking if file is migration: {filePath}: {ex.Message}");
+            }
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Determines if a file is an Azure Function file
+    /// </summary>
+    /// <param name="filePath">Path to the file to check</param>
+    /// <returns>True if the file appears to be an Azure Function file</returns>
+    private bool IsAzureFunctionFile(string filePath)
+    {
+        try
+        {
+            var fileName = Path.GetFileName(filePath);
+            
+            // Check for common Azure Function file patterns
+            var functionPatterns = new[]
+            {
+                "Function", "function", "Functions", "functions",
+                "AzureFunction", "azurefunction", "AzureFunctions", "azurefunctions"
+            };
+            
+            // Check filename patterns
+            foreach (var pattern in functionPatterns)
+            {
+                if (fileName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+            
+            // Check file content for Azure Function-specific patterns
+            if (File.Exists(filePath))
+            {
+                var content = File.ReadAllText(filePath);
+                var contentPatterns = new[]
+                {
+                    "[FunctionName", "FunctionName", "Microsoft.Azure.WebJobs",
+                    "Microsoft.Azure.Functions", "HttpTrigger", "TimerTrigger",
+                    "BlobTrigger", "QueueTrigger", "ServiceBusTrigger",
+                    "CosmosDBTrigger", "EventHubTrigger", "EventGridTrigger"
+                };
+                
+                foreach (var pattern in contentPatterns)
+                {
+                    if (content.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+        catch (Exception ex)
+        {
+            if (_verbose)
+            {
+                Console.WriteLine($"Error checking if file is Azure Function: {filePath}: {ex.Message}");
+            }
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// Determines if a file is a Controller file
+    /// </summary>
+    /// <param name="filePath">Path to the file to check</param>
+    /// <returns>True if the file appears to be a Controller file</returns>
+    private bool IsControllerFile(string filePath)
+    {
+        try
+        {
+            var fileName = Path.GetFileName(filePath);
+            
+            // Check for common Controller file patterns
+            if (fileName.EndsWith("Controller.cs", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            
+            // Check file content for Controller-specific patterns
+            if (File.Exists(filePath))
+            {
+                var content = File.ReadAllText(filePath);
+                var contentPatterns = new[]
+                {
+                    ": Controller", ": ControllerBase", ": ApiController",
+                    "[Controller]", "[ApiController]", "Microsoft.AspNetCore.Mvc",
+                    "System.Web.Mvc", "[Route", "[HttpGet", "[HttpPost",
+                    "[HttpPut", "[HttpDelete", "[HttpPatch"
+                };
+                
+                foreach (var pattern in contentPatterns)
+                {
+                    if (content.Contains(pattern, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+        catch (Exception ex)
+        {
+            if (_verbose)
+            {
+                Console.WriteLine($"Error checking if file is Controller: {filePath}: {ex.Message}");
+            }
+            return false;
+        }
     }
 } 

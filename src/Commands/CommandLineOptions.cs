@@ -23,6 +23,21 @@ public static class CommandLineOptions
     public static Option<bool> IgnoreTests { get; } = CreateIgnoreTestsOption();
     
     /// <summary>
+    /// Option for ignoring database migrations during analysis
+    /// </summary>
+    public static Option<bool> IgnoreMigrations { get; } = CreateIgnoreMigrationsOption();
+    
+    /// <summary>
+    /// Option for ignoring Azure Functions during analysis
+    /// </summary>
+    public static Option<bool> IgnoreAzureFunctions { get; } = CreateIgnoreAzureFunctionsOption();
+    
+    /// <summary>
+    /// Option for ignoring Controllers during analysis
+    /// </summary>
+    public static Option<bool> IgnoreControllers { get; } = CreateIgnoreControllersOption();
+    
+    /// <summary>
     /// Creates and configures the root command with all options
     /// </summary>
     /// <returns>Configured root command</returns>
@@ -33,6 +48,9 @@ public static class CommandLineOptions
         rootCommand.AddOption(ProjectPath);
         rootCommand.AddOption(Verbose);
         rootCommand.AddOption(IgnoreTests);
+        rootCommand.AddOption(IgnoreMigrations);
+        rootCommand.AddOption(IgnoreAzureFunctions);
+        rootCommand.AddOption(IgnoreControllers);
         
         return rootCommand;
     }
@@ -106,6 +124,39 @@ public static class CommandLineOptions
             description: "Ignore test projects during analysis");
         
         option.AddAlias("-i");
+        
+        return option;
+    }
+    
+    private static Option<bool> CreateIgnoreMigrationsOption()
+    {
+        var option = new Option<bool>(
+            name: "--ignore-migrations",
+            description: "Ignore database migration files during analysis");
+        
+        option.AddAlias("-im");
+        
+        return option;
+    }
+    
+    private static Option<bool> CreateIgnoreAzureFunctionsOption()
+    {
+        var option = new Option<bool>(
+            name: "--ignore-azure-functions",
+            description: "Ignore Azure Function files during analysis");
+        
+        option.AddAlias("-iaf");
+        
+        return option;
+    }
+    
+    private static Option<bool> CreateIgnoreControllersOption()
+    {
+        var option = new Option<bool>(
+            name: "--ignore-controllers",
+            description: "Ignore Controller files during analysis");
+        
+        option.AddAlias("-ic");
         
         return option;
     }

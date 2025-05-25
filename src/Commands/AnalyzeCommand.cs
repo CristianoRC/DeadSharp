@@ -14,7 +14,11 @@ public static class AnalyzeCommand
     /// <param name="projectPath">Path to the project or solution to analyze</param>
     /// <param name="verbose">Whether to enable verbose output</param>
     /// <param name="ignoreTests">Whether to ignore test projects during analysis</param>
-    public static async Task ExecuteAsync(string projectPath, bool verbose, bool ignoreTests = false)
+    /// <param name="ignoreMigrations">Whether to ignore database migration files during analysis</param>
+    /// <param name="ignoreAzureFunctions">Whether to ignore Azure Function files during analysis</param>
+    /// <param name="ignoreControllers">Whether to ignore Controller files during analysis</param>
+    public static async Task ExecuteAsync(string projectPath, bool verbose, bool ignoreTests = false, 
+        bool ignoreMigrations = false, bool ignoreAzureFunctions = false, bool ignoreControllers = false)
     {
         try
         {
@@ -26,9 +30,21 @@ public static class AnalyzeCommand
                 {
                     Console.WriteLine("Ignoring test projects");
                 }
+                if (ignoreMigrations)
+                {
+                    Console.WriteLine("Ignoring database migrations");
+                }
+                if (ignoreAzureFunctions)
+                {
+                    Console.WriteLine("Ignoring Azure Functions");
+                }
+                if (ignoreControllers)
+                {
+                    Console.WriteLine("Ignoring Controllers");
+                }
             }
 
-            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests);
+            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers);
         }
         catch (Exception ex)
         {
@@ -41,9 +57,10 @@ public static class AnalyzeCommand
         }
     }
 
-    private static async Task AnalyzeProjectAsync(string projectPath, bool verbose, bool ignoreTests)
+    private static async Task AnalyzeProjectAsync(string projectPath, bool verbose, bool ignoreTests, 
+        bool ignoreMigrations, bool ignoreAzureFunctions, bool ignoreControllers)
     {
-        var analyzer = new CodeAnalyzer(verbose, ignoreTests);
+        var analyzer = new CodeAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers);
 
         Console.WriteLine($"Starting analysis of project at {projectPath}...");
         var stopwatch = Stopwatch.StartNew();

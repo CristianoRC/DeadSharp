@@ -13,7 +13,10 @@ class Program
             AnalyzeCommand.ExecuteAsync,
             CommandLineOptions.ProjectPath, 
             CommandLineOptions.Verbose,
-            CommandLineOptions.IgnoreTests);
+            CommandLineOptions.IgnoreTests,
+            CommandLineOptions.IgnoreMigrations,
+            CommandLineOptions.IgnoreAzureFunctions,
+            CommandLineOptions.IgnoreControllers);
 
         return await rootCommand.InvokeAsync(args);
     }
