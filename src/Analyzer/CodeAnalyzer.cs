@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 
 namespace DeadSharp.Analyzer;
@@ -8,10 +9,12 @@ namespace DeadSharp.Analyzer;
 public class CodeAnalyzer
 {
     private readonly bool _verbose;
+    private readonly RoslynAnalyzer _roslynAnalyzer;
     
     public CodeAnalyzer(bool verbose = false)
     {
         _verbose = verbose;
+        _roslynAnalyzer = new RoslynAnalyzer(verbose);
     }
     
     /// <summary>
@@ -35,9 +38,9 @@ public class CodeAnalyzer
             }
             
             // 1. Identify if it's a solution or project file
-            var isSolution = projectPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase);
-            var isProject = projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
-            var isDirectory = Directory.Exists(projectPath);
+            bool isSolution = projectPath.EndsWith(".sln", StringComparison.OrdinalIgnoreCase);
+            bool isProject = projectPath.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase);
+            bool isDirectory = Directory.Exists(projectPath);
             
             if (isDirectory)
             {
@@ -103,14 +106,61 @@ public class CodeAnalyzer
             Console.WriteLine($"Analyzing solution: {solutionPath}");
         }
         
-        // TODO: Parse solution file to extract project references
-        // For now, we'll just search for .csproj files in the same directory
-        var solutionDir = Path.GetDirectoryName(solutionPath);
-        var projectFiles = Directory.GetFiles(solutionDir!, "*.csproj", SearchOption.AllDirectories);
-        
-        foreach (var projectFile in projectFiles)
+        try
         {
-            await AnalyzeProjectFileAsync(projectFile, result);
+            // Parse solution file to extract project references
+            var solutionInfo = await SolutionParser.GetSolutionInfoAsync(solutionPath);
+            
+            if (_verbose)
+            {
+                Console.WriteLine($"Solution: {solutionInfo.SolutionName}");
+                Console.WriteLine($"Projects found: {solutionInfo.ProjectCount}");
+                if (!string.IsNullOrEmpty(solutionInfo.VisualStudioVersion))
+                {
+                    Console.WriteLine($"Visual Studio version: {solutionInfo.VisualStudioVersion}");
+                }
+            }
+            
+            // Try to use Roslyn for better analysis
+            try
+            {
+                var roslynResults = await _roslynAnalyzer.AnalyzeSolutionAsync(solutionPath);
+                result.ProjectResults.AddRange(roslynResults);
+                
+                if (_verbose)
+                {
+                    Console.WriteLine($"Successfully analyzed solution with Roslyn: {roslynResults.Count} projects");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_verbose)
+                {
+                    Console.WriteLine($"Roslyn analysis failed, falling back to basic analysis: {ex.Message}");
+                }
+                
+                // Fallback to basic analysis
+                foreach (var projectPath in solutionInfo.ProjectPaths)
+                {
+                    await AnalyzeProjectFileAsync(projectPath, result);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_verbose)
+            {
+                Console.WriteLine($"Error analyzing solution: {ex.Message}");
+            }
+            
+            // Fallback: search for .csproj files in the same directory
+            var solutionDir = Path.GetDirectoryName(solutionPath);
+            var projectFiles = Directory.GetFiles(solutionDir!, "*.csproj", SearchOption.AllDirectories);
+            
+            foreach (var projectFile in projectFiles)
+            {
+                await AnalyzeProjectFileAsync(projectFile, result);
+            }
         }
     }
     
@@ -121,8 +171,37 @@ public class CodeAnalyzer
             Console.WriteLine($"Analyzing project: {projectFilePath}");
         }
         
-        // TODO: Parse project file to extract references and analyze build output
-        // For now, we'll just collect and analyze C# files
+        try
+        {
+            // Try Roslyn analysis first
+            var roslynResult = await _roslynAnalyzer.AnalyzeProjectFileAsync(projectFilePath);
+            
+            if (roslynResult.SourceFileCount > 0)
+            {
+                result.ProjectResults.Add(roslynResult);
+                
+                if (_verbose)
+                {
+                    Console.WriteLine($"Successfully analyzed project with Roslyn: {roslynResult.SourceFileCount} files");
+                }
+                return;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (_verbose)
+            {
+                Console.WriteLine($"Roslyn analysis failed for project, falling back to basic analysis: {ex.Message}");
+            }
+        }
+        
+        // Fallback to basic analysis
+        await AnalyzeProjectFileBasicAsync(projectFilePath, result);
+    }
+    
+    private async Task AnalyzeProjectFileBasicAsync(string projectFilePath, AnalysisResult result)
+    {
+        // Parse project file to extract references and analyze build output
         var projectDir = Path.GetDirectoryName(projectFilePath);
         var sourceFiles = Directory.GetFiles(projectDir!, "*.cs", SearchOption.AllDirectories);
         
@@ -169,9 +248,7 @@ public class CodeAnalyzer
         {
             var sourceCode = await File.ReadAllTextAsync(sourceFilePath);
             
-            // TODO: Implement more sophisticated code analysis using Roslyn
-            // For now, just do basic pattern matching
-            
+            // Basic pattern matching for fallback analysis
             // Count classes
             var classMatches = Regex.Matches(sourceCode, @"(public|internal|private|protected)?\s+class\s+(\w+)");
             result.ClassCount = classMatches.Count;
@@ -180,8 +257,8 @@ public class CodeAnalyzer
             var methodMatches = Regex.Matches(sourceCode, @"(public|internal|private|protected)?\s+(static\s+)?\w+\s+\w+\s*\([^)]*\)");
             result.MethodCount = methodMatches.Count;
             
-            // TODO: Identify potentially dead methods and classes
-            // This requires more sophisticated analysis with Roslyn
+            // Basic dead code detection (very simple heuristics)
+            await PerformBasicDeadCodeDetection(sourceCode, result);
             
             if (_verbose)
             {
@@ -200,7 +277,111 @@ public class CodeAnalyzer
         return result;
     }
     
-    private static bool IsGeneratedFile(string filePath)
+    private async Task PerformBasicDeadCodeDetection(string sourceCode, FileAnalysisResult result)
+    {
+        // Very basic dead code detection using regex patterns
+        // This is a fallback when Roslyn analysis is not available
+        
+        var lines = sourceCode.Split('\n');
+        
+        // Find private methods that might be unused
+        var privateMethodRegex = new Regex(@"private\s+(?:static\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)", RegexOptions.Compiled);
+        var methodCalls = new HashSet<string>();
+        
+        // First pass: collect all method calls
+        foreach (var line in lines)
+        {
+            var callMatches = Regex.Matches(line, @"(\w+)\s*\(");
+            foreach (Match match in callMatches)
+            {
+                methodCalls.Add(match.Groups[1].Value);
+            }
+        }
+        
+        // Second pass: find private methods that are not called
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var match = privateMethodRegex.Match(line);
+            
+            if (match.Success)
+            {
+                var methodName = match.Groups[1].Value;
+                
+                // Skip special methods
+                if (methodName == "Main" || methodName.StartsWith("get_") || methodName.StartsWith("set_"))
+                    continue;
+                
+                if (!methodCalls.Contains(methodName))
+                {
+                    var deadCodeItem = new DeadCodeItem
+                    {
+                        Name = methodName,
+                        Type = "Method",
+                        LineNumber = i + 1,
+                        ColumnNumber = match.Index + 1,
+                        ConfidencePercentage = 60, // Lower confidence for basic analysis
+                        Reason = "Private method with no apparent references (basic analysis)"
+                    };
+                    
+                    result.DeadMethods.Add(deadCodeItem);
+                    result.PotentialDeadMethodCount++;
+                }
+            }
+        }
+        
+        // Find private classes that might be unused
+        var privateClassRegex = new Regex(@"private\s+class\s+(\w+)", RegexOptions.Compiled);
+        var classUsages = new HashSet<string>();
+        
+        // Collect class usages
+        foreach (var line in lines)
+        {
+            var usageMatches = Regex.Matches(line, @"new\s+(\w+)\s*\(|:\s*(\w+)|<(\w+)>|(\w+)\s+\w+\s*=");
+            foreach (Match match in usageMatches)
+            {
+                for (int g = 1; g < match.Groups.Count; g++)
+                {
+                    if (match.Groups[g].Success)
+                    {
+                        classUsages.Add(match.Groups[g].Value);
+                    }
+                }
+            }
+        }
+        
+        // Find unused private classes
+        for (int i = 0; i < lines.Length; i++)
+        {
+            var line = lines[i];
+            var match = privateClassRegex.Match(line);
+            
+            if (match.Success)
+            {
+                var className = match.Groups[1].Value;
+                
+                if (!classUsages.Contains(className))
+                {
+                    var deadCodeItem = new DeadCodeItem
+                    {
+                        Name = className,
+                        Type = "Class",
+                        LineNumber = i + 1,
+                        ColumnNumber = match.Index + 1,
+                        ConfidencePercentage = 50, // Lower confidence for basic analysis
+                        Reason = "Private class with no apparent references (basic analysis)"
+                    };
+                    
+                    result.DeadClasses.Add(deadCodeItem);
+                    result.PotentialDeadClassCount++;
+                }
+            }
+        }
+        
+        await Task.CompletedTask;
+    }
+    
+    private bool IsGeneratedFile(string filePath)
     {
         // Check if file is in obj/ or bin/ directory
         if (filePath.Contains(Path.Combine("obj", "")) || filePath.Contains(Path.Combine("bin", "")))
@@ -215,7 +396,9 @@ public class CodeAnalyzer
             return firstFewLines.Any(line => 
                 line.Contains("auto-generated") || 
                 line.Contains("autogenerated") || 
-                line.Contains("generated by"));
+                line.Contains("generated by") ||
+                line.Contains("<auto-generated") ||
+                line.Contains("This code was generated"));
         }
         catch
         {

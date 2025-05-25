@@ -100,7 +100,8 @@ public static class AnalyzeCommand
                 Console.ResetColor();
             }
 
-            // TODO: Print details of dead code items when we have actual implementation
+            // Print details of dead code items
+            PrintDeadCodeDetails(result);
         }
         else
         {
@@ -138,6 +139,98 @@ public static class AnalyzeCommand
 
                     Console.ResetColor();
                 }
+            }
+        }
+    }
+
+    private static void PrintDeadCodeDetails(AnalysisResult result)
+    {
+        var allDeadItems = new List<(string FilePath, DeadCodeItem Item)>();
+
+        // Collect all dead code items from all projects and files
+        foreach (var projectResult in result.ProjectResults)
+        {
+            foreach (var fileResult in projectResult.FileResults)
+            {
+                foreach (var deadMethod in fileResult.DeadMethods)
+                {
+                    allDeadItems.Add((fileResult.RelativePath, deadMethod));
+                }
+
+                foreach (var deadClass in fileResult.DeadClasses)
+                {
+                    allDeadItems.Add((fileResult.RelativePath, deadClass));
+                }
+            }
+        }
+
+        if (allDeadItems.Count == 0)
+            return;
+
+        Console.WriteLine();
+        Console.WriteLine("=== DEAD CODE DETAILS ===");
+
+        // Group by confidence level for better presentation
+        var highConfidence = allDeadItems.Where(x => x.Item.ConfidencePercentage >= 80).ToList();
+        var mediumConfidence = allDeadItems.Where(x => x.Item.ConfidencePercentage >= 60 && x.Item.ConfidencePercentage < 80).ToList();
+        var lowConfidence = allDeadItems.Where(x => x.Item.ConfidencePercentage < 60).ToList();
+
+        if (highConfidence.Count > 0)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Red;
+            Console.WriteLine($"HIGH CONFIDENCE ({highConfidence.Count} items):");
+            Console.ResetColor();
+            PrintDeadCodeItemGroup(highConfidence);
+        }
+
+        if (mediumConfidence.Count > 0)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"MEDIUM CONFIDENCE ({mediumConfidence.Count} items):");
+            Console.ResetColor();
+            PrintDeadCodeItemGroup(mediumConfidence);
+        }
+
+        if (lowConfidence.Count > 0)
+        {
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.DarkYellow;
+            Console.WriteLine($"LOW CONFIDENCE ({lowConfidence.Count} items):");
+            Console.ResetColor();
+            PrintDeadCodeItemGroup(lowConfidence);
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("💡 Tip: Review high confidence items first. Low confidence items may be false positives.");
+    }
+
+    private static void PrintDeadCodeItemGroup(List<(string FilePath, DeadCodeItem Item)> items)
+    {
+        // Group by file for better organization
+        var groupedByFile = items.GroupBy(x => x.FilePath).OrderBy(g => g.Key);
+
+        foreach (var fileGroup in groupedByFile)
+        {
+            Console.WriteLine($"  📁 {fileGroup.Key}");
+
+            foreach (var (_, item) in fileGroup.OrderBy(x => x.Item.LineNumber))
+            {
+                var icon = item.Type switch
+                {
+                    "Method" => "🔧",
+                    "Class" => "📦",
+                    "Property" => "🏷️",
+                    "Field" => "📋",
+                    _ => "❓"
+                };
+
+                Console.WriteLine($"    {icon} {item.Type}: {item.Name}");
+                Console.WriteLine($"       📍 Line {item.LineNumber}, Column {item.ColumnNumber}");
+                Console.WriteLine($"       🎯 Confidence: {item.ConfidencePercentage}%");
+                Console.WriteLine($"       💭 {item.Reason}");
+                Console.WriteLine();
             }
         }
     }
