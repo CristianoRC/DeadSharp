@@ -1,116 +1,116 @@
 # DeadSharp
 
-DeadSharp é uma ferramenta de linha de comando para analisar projetos C# e identificar código morto (dead code).
+DeadSharp is a command-line tool for analyzing C# projects and identifying dead code.
 
-## Instalação
+## Installation
 
-### Do NuGet (quando publicado)
+### From NuGet (when published)
 ```bash
 dotnet tool install --global DeadSharp
 ```
 
-### Do Código Fonte
-1. Clone o repositório
-2. Compile o projeto
+### From Source Code
+1. Clone the repository
+2. Build the project
    ```bash
    cd src
    dotnet pack
    dotnet tool install --global --add-source ./nupkg DeadSharp
    ```
 
-## Uso
+## Usage
 
 ```bash
-# Uso básico
-deadsharp --path /caminho/para/seu/projeto
+# Basic usage
+deadsharp --path /path/to/your/project
 
-# Ou com parâmetro curto
-deadsharp -p /caminho/para/seu/projeto
+# Or with short parameter
+deadsharp -p /path/to/your/project
 
-# Habilitar saída verbosa
-deadsharp -p /caminho/para/seu/projeto -v
+# Enable verbose output
+deadsharp -p /path/to/your/project -v
 
-# Ignorar projetos de teste durante a análise
-deadsharp -p /caminho/para/seu/projeto --ignore-tests
+# Ignore test projects during analysis
+deadsharp -p /path/to/your/project --ignore-tests
 
-# Combinar opções
-deadsharp -p /caminho/para/seu/projeto -v --ignore-tests
+# Combine options
+deadsharp -p /path/to/your/project -v --ignore-tests
 ```
 
-### Tipos de Entrada Suportados
+### Supported Input Types
 
-- **Diretórios**: Analisa todos os arquivos .csproj e .sln encontrados
-- **Arquivos .sln**: Analisa todos os projetos na solução
-- **Arquivos .csproj**: Analisa o projeto específico
+- **Directories**: Analyzes all .csproj and .sln files found
+- **.sln files**: Analyzes all projects in the solution
+- **.csproj files**: Analyzes the specific project
 
-### Opções Avançadas
+### Advanced Options
 
-#### Ignorar Projetos de Teste (`--ignore-tests`)
+#### Ignore Test Projects (`--ignore-tests`)
 
-Por padrão, a ferramenta analisa todos os projetos encontrados, incluindo projetos de teste. Isso pode gerar muitos falsos positivos, pois métodos de teste são executados pelos frameworks de teste e não são "chamados" diretamente no código.
+By default, the tool analyzes all projects found, including test projects. This can generate many false positives, as test methods are executed by testing frameworks and are not "called" directly in the code.
 
-Use a opção `--ignore-tests` para filtrar automaticamente projetos de teste:
+Use the `--ignore-tests` option to automatically filter out test projects:
 
 ```bash
-deadsharp -p /caminho/para/projeto --ignore-tests
+deadsharp -p /path/to/project --ignore-tests
 ```
 
-A ferramenta detecta projetos de teste baseado em:
-- **Padrões de nomenclatura**: projetos contendo "test", "tests", "unittest", "spec", etc.
-- **Dependências**: projetos que referenciam pacotes como xUnit, NUnit, MSTest, Moq, FluentAssertions, etc.
+The tool detects test projects based on:
+- **Naming patterns**: projects containing "test", "tests", "unittest", "spec", etc.
+- **Dependencies**: projects that reference packages like xUnit, NUnit, MSTest, Moq, FluentAssertions, etc.
 
-**Exemplo de resultado:**
-- Sem `--ignore-tests`: 89 métodos potencialmente mortos
-- Com `--ignore-tests`: 35 métodos potencialmente mortos (54 falsos positivos removidos)
+**Example result:**
+- Without `--ignore-tests`: 89 potentially dead methods
+- With `--ignore-tests`: 35 potentially dead methods (54 false positives removed)
 
-## Funcionalidades
+## Features
 
-- ✅ Análise de projetos C# para identificar código não utilizado
-- ✅ Funciona com arquivos de projeto (.csproj) e solução (.sln)
-- ✅ Relatórios detalhados de localização de código morto
-- ✅ Validação de entrada com mensagens de erro claras
-- ✅ Modo verboso para análise detalhada
-- ✅ Opção para ignorar projetos de teste (reduz falsos positivos)
-- ✅ Arquitetura modular e extensível
+- ✅ Analysis of C# projects to identify unused code
+- ✅ Works with project files (.csproj) and solution files (.sln)
+- ✅ Detailed reports of dead code locations
+- ✅ Input validation with clear error messages
+- ✅ Verbose mode for detailed analysis
+- ✅ Option to ignore test projects (reduces false positives)
+- ✅ Modular and extensible architecture
 
-## Estrutura do Projeto
+## Project Structure
 
 ```
 src/
-├── Program.cs                    # Ponto de entrada principal
+├── Program.cs                    # Main entry point
 ├── Commands/
-│   ├── CommandLineOptions.cs    # Configuração de opções da linha de comando
-│   └── AnalyzeCommand.cs        # Lógica do comando de análise
+│   ├── CommandLineOptions.cs    # Command line options configuration
+│   └── AnalyzeCommand.cs        # Analysis command logic
 └── Analyzer/
-    ├── CodeAnalyzer.cs          # Analisador principal de código
-    └── AnalysisResult.cs        # Modelos de resultado da análise
+    ├── CodeAnalyzer.cs          # Main code analyzer
+    └── AnalysisResult.cs        # Analysis result models
 ```
 
-## Desenvolvimento
+## Development
 
-### Compilar
+### Build
 ```bash
 cd src
 dotnet build
 ```
 
-### Testar Localmente
+### Test Locally
 ```bash
 cd src
-dotnet run -- --path /caminho/para/projeto --verbose
+dotnet run -- --path /path/to/project --verbose
 ```
 
-### Empacotar
+### Package
 ```bash
 cd src
 dotnet pack
 ```
 
-## Licença
+## License
 
-Veja o arquivo [LICENSE](LICENSE) para detalhes.
+See the [LICENSE](LICENSE) file for details.
 
+## Contributing
 
-🤝 Contributing
 Pull requests are welcome! If you'd like to contribute, please fork the repo and submit a PR. Bug reports and feature requests are also highly appreciated.
 
