@@ -45,11 +45,28 @@ deadsharp -p /path/to/your/project --ignore-controllers
 # Enable enhanced dependency injection detection
 deadsharp -p /path/to/your/project --enhanced-di-detection
 
-# Combine multiple ignore options
-deadsharp -p /path/to/your/project -v --ignore-tests --ignore-migrations --ignore-controllers --enhanced-di-detection
+# Save results to a JSON file
+deadsharp -p /path/to/your/project --output results.json
+
+# Combine multiple options
+deadsharp -p /path/to/your/project -v --ignore-tests --ignore-migrations --ignore-controllers --enhanced-di-detection --output results.json
 
 # Use short aliases
-deadsharp -p /path/to/your/project -v -i -im -iaf -ic -ed
+deadsharp -p /path/to/your/project -v -i -im -iaf -ic -ed -o results.json
+```
+
+### Important Note About Large Projects
+
+For large projects, it's recommended to use the `--output` option to save the results to a JSON file. This is because:
+
+1. Large projects may generate a lot of output that might not fit in the console buffer
+2. The JSON output can be used for further analysis or integration with other tools
+3. You can review the results at your own pace without time constraints
+4. The results can be shared with team members or stored for future reference
+
+Example for large projects:
+```bash
+deadsharp -p /path/to/large/project --output analysis-results.json
 ```
 
 ### Supported Input Types

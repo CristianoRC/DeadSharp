@@ -43,6 +43,11 @@ public static class CommandLineOptions
     public static Option<bool> EnhancedDiDetection { get; } = CreateEnhancedDiDetectionOption();
     
     /// <summary>
+    /// Option for specifying the output path for JSON results
+    /// </summary>
+    public static Option<string> OutputPath { get; } = CreateOutputPathOption();
+    
+    /// <summary>
     /// Creates and configures the root command with all options
     /// </summary>
     /// <returns>Configured root command</returns>
@@ -57,6 +62,7 @@ public static class CommandLineOptions
         rootCommand.AddOption(IgnoreAzureFunctions);
         rootCommand.AddOption(IgnoreControllers);
         rootCommand.AddOption(EnhancedDiDetection);
+        rootCommand.AddOption(OutputPath);
         
         return rootCommand;
     }
@@ -174,6 +180,20 @@ public static class CommandLineOptions
             description: "Enable enhanced dependency injection detection to better identify classes used only in DI containers");
         
         option.AddAlias("-ed");
+        
+        return option;
+    }
+    
+    private static Option<string> CreateOutputPathOption()
+    {
+        var option = new Option<string>(
+            name: "--output",
+            description: "Path to save the analysis results in JSON format")
+        {
+            IsRequired = false
+        };
+        
+        option.AddAlias("-o");
         
         return option;
     }

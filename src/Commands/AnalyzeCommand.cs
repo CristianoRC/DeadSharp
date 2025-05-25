@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using DeadSharp.Analyzer;
 
 namespace DeadSharp.Commands;
@@ -18,9 +19,10 @@ public static class AnalyzeCommand
     /// <param name="ignoreAzureFunctions">Whether to ignore Azure Function files during analysis</param>
     /// <param name="ignoreControllers">Whether to ignore Controller files during analysis</param>
     /// <param name="enhancedDiDetection">Whether to enable enhanced dependency injection detection</param>
+    /// <param name="outputPath">Optional path to save the analysis results in JSON format</param>
     public static async Task ExecuteAsync(string projectPath, bool verbose, bool ignoreTests = false, 
         bool ignoreMigrations = false, bool ignoreAzureFunctions = false, bool ignoreControllers = false,
-        bool enhancedDiDetection = false)
+        bool enhancedDiDetection = false, string? outputPath = null)
     {
         try
         {
@@ -48,9 +50,13 @@ public static class AnalyzeCommand
                 {
                     Console.WriteLine("Enhanced dependency injection detection enabled");
                 }
+                if (!string.IsNullOrEmpty(outputPath))
+                {
+                    Console.WriteLine($"Results will be saved to: {outputPath}");
+                }
             }
 
-            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection);
+            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, outputPath);
         }
         catch (Exception ex)
         {
@@ -64,7 +70,8 @@ public static class AnalyzeCommand
     }
 
     private static async Task AnalyzeProjectAsync(string projectPath, bool verbose, bool ignoreTests, 
-        bool ignoreMigrations, bool ignoreAzureFunctions, bool ignoreControllers, bool enhancedDiDetection)
+        bool ignoreMigrations, bool ignoreAzureFunctions, bool ignoreControllers, bool enhancedDiDetection,
+        string? outputPath)
     {
         var analyzer = new CodeAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection);
 
@@ -84,6 +91,31 @@ public static class AnalyzeCommand
             Console.WriteLine();
 
             PrintAnalysisResults(result);
+
+            if (!string.IsNullOrEmpty(outputPath))
+            {
+                try
+                {
+                    var jsonOptions = new JsonSerializerOptions
+                    {
+                        WriteIndented = true
+                    };
+                    
+                    var json = JsonSerializer.Serialize(result, jsonOptions);
+                    await File.WriteAllTextAsync(outputPath, json);
+                    
+                    Console.WriteLine();
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Console.WriteLine($"Results saved to: {outputPath}");
+                    Console.ResetColor();
+                }
+                catch (Exception ex)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.Error.WriteLine($"Error saving results to {outputPath}: {ex.Message}");
+                    Console.ResetColor();
+                }
+            }
         }
         else
         {

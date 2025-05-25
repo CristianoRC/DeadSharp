@@ -17,7 +17,8 @@ class Program
             CommandLineOptions.IgnoreMigrations,
             CommandLineOptions.IgnoreAzureFunctions,
             CommandLineOptions.IgnoreControllers,
-            CommandLineOptions.EnhancedDiDetection);
+            CommandLineOptions.EnhancedDiDetection,
+            CommandLineOptions.OutputPath);
 
         return await rootCommand.InvokeAsync(args);
     }
