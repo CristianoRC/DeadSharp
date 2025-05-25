@@ -10,12 +10,12 @@ public static class CommandLineOptions
     /// <summary>
     /// Option for specifying the project path to analyze
     /// </summary>
-    public static Option<string> ProjectPathOption { get; } = CreateProjectPathOption();
+    public static Option<string> ProjectPath { get; } = CreateProjectPathOption();
     
     /// <summary>
     /// Option for enabling verbose output
     /// </summary>
-    public static Option<bool> VerboseOption { get; } = CreateVerboseOption();
+    public static Option<bool> Verbose { get; } = CreateVerboseOption();
     
     /// <summary>
     /// Creates and configures the root command with all options
@@ -25,8 +25,8 @@ public static class CommandLineOptions
     {
         var rootCommand = new RootCommand("DeadSharp: A tool for analyzing C# projects to identify dead code");
         
-        rootCommand.AddOption(ProjectPathOption);
-        rootCommand.AddOption(VerboseOption);
+        rootCommand.AddOption(ProjectPath);
+        rootCommand.AddOption(Verbose);
         
         return rootCommand;
     }
