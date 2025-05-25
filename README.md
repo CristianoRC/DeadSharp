@@ -4,21 +4,9 @@ DeadSharp is a command-line tool for analyzing C# projects and identifying dead 
 
 
 
-## 🆕 What's New
-
-**Enhanced Data Flow Analysis** - Advanced semantic analysis capabilities! The new `--enhanced-dataflow` option provides sophisticated pattern detection that significantly reduces false positives by tracking:
-
-- 🏭 **Factory patterns** - Detects classes used via `factory.Create<T>()`
-- 🔄 **Data flow tracking** - Follows variable usage through complex control flows  
-- 🎯 **Interface implementations** - Automatically marks implementations when interfaces are used
-- 🧩 **Generic type parameters** - Detects usage in generic constraints and type arguments
-- 🔗 **Lambda expressions** - Deep analysis of delegate and lambda usage
-
-**Result**: Much more accurate dead code detection with fewer false positives!
-
 ## Installation
 
-### From NuGet (when published)
+### From NuGet (not published yet)
 ```bash
 dotnet tool install --global DeadSharp
 ```
