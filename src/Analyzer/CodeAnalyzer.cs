@@ -674,6 +674,7 @@ public class CodeAnalyzer
         // Collect all declared classes and methods across all files
         var allDeclaredClasses = new Dictionary<string, (string filePath, int lineNumber)>();
         var allDeclaredMethods = new Dictionary<string, (string filePath, int lineNumber, string accessibility)>();
+        var interfaceImplementations = new Dictionary<string, List<string>>(); // interface -> list of implementations
         
         // First pass: collect all declarations
         foreach (var kvp in allSourceCode)
@@ -682,8 +683,8 @@ public class CodeAnalyzer
             var sourceCode = kvp.Value;
             var lines = sourceCode.Split('\n');
             
-            // Find class declarations
-            var classRegex = new Regex(@"(public|internal|private|protected)?\s+class\s+(\w+)", RegexOptions.Compiled);
+            // Find class declarations and their interfaces
+            var classRegex = new Regex(@"(public|internal|private|protected)?\s+class\s+(\w+)(?:\s*:\s*([^{]+))?", RegexOptions.Compiled);
             for (int i = 0; i < lines.Length; i++)
             {
                 var match = classRegex.Match(lines[i]);
@@ -693,12 +694,35 @@ public class CodeAnalyzer
                     if (!allDeclaredClasses.ContainsKey(className))
                     {
                         allDeclaredClasses[className] = (filePath, i + 1);
+                        
+                        // Check if this class implements interfaces
+                        if (match.Groups[3].Success)
+                        {
+                            var inheritanceList = match.Groups[3].Value;
+                            var interfaces = inheritanceList.Split(',')
+                                .Select(s => s.Trim())
+                                .Where(s => s.StartsWith("I") && char.IsUpper(s[1])); // Interface naming convention
+                            
+                            foreach (var interfaceName in interfaces)
+                            {
+                                if (!interfaceImplementations.ContainsKey(interfaceName))
+                                {
+                                    interfaceImplementations[interfaceName] = new List<string>();
+                                }
+                                interfaceImplementations[interfaceName].Add(className);
+                                
+                                if (_verbose)
+                                {
+                                    Console.WriteLine($"    Found implementation: {className} implements {interfaceName}");
+                                }
+                            }
+                        }
                     }
                 }
             }
             
             // Find method declarations
-            var methodRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)", RegexOptions.Compiled);
+            var methodRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+(?:<[^>]+>)?\s+)?(\w+)(?:<[^>]+>)?\s*\([^)]*\)", RegexOptions.Compiled);
             for (int i = 0; i < lines.Length; i++)
             {
                 var match = methodRegex.Match(lines[i]);
@@ -707,9 +731,13 @@ public class CodeAnalyzer
                     var accessibility = match.Groups[1].Value;
                     var methodName = match.Groups[2].Value;
                     
+                    // Check if this is an extension method
+                    var isExtensionMethod = lines[i].Contains("this ") && lines[i].Contains("static");
+                    
                     if (_verbose)
                     {
-                        Console.WriteLine($"    Found method: {accessibility} {methodName} in {Path.GetFileName(filePath)}:{i + 1}");
+                        var methodType = isExtensionMethod ? "extension method" : "method";
+                        Console.WriteLine($"    Found {methodType}: {accessibility} {methodName} in {Path.GetFileName(filePath)}:{i + 1}");
                     }
                     
                     // Skip special methods
@@ -743,11 +771,24 @@ public class CodeAnalyzer
         var usedClasses = new HashSet<string>();
         var usedMethods = new HashSet<string>();
         
+        // Mark framework-related classes as used (they're typically instantiated by frameworks)
+        foreach (var className in allDeclaredClasses.Keys)
+        {
+            if (IsFrameworkClass(className))
+            {
+                usedClasses.Add(className);
+                if (_verbose)
+                {
+                    Console.WriteLine($"    Framework class {className} marked as USED (framework pattern)");
+                }
+            }
+        }
+        
         // Create a version of the code without method declarations to avoid false positives
         var codeWithoutDeclarations = cleanedCombinedCode;
         
         // Remove method declarations from the analysis
-        var methodDeclarationRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)\s*\{?", RegexOptions.Compiled);
+        var methodDeclarationRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+(?:<[^>]+>)?\s+)?(\w+)(?:<[^>]+>)?\s*\([^)]*\)\s*\{?", RegexOptions.Compiled);
         codeWithoutDeclarations = methodDeclarationRegex.Replace(codeWithoutDeclarations, "");
         
         // Remove class declarations too
@@ -771,6 +812,12 @@ public class CodeAnalyzer
                 $@"<{Regex.Escape(className)}>",            // generic parameter
                 $@"\({Regex.Escape(className)}\s+",         // parameter type
                 $@"\b{Regex.Escape(className)}\.",          // static access
+                $@"I{Regex.Escape(className)}\b",           // Interface reference (IClassName)
+                $@"{Regex.Escape(className)}\s*>",          // Generic constraint
+                // Dependency Injection patterns
+                $@"Add\w*<.*{Regex.Escape(className)}>",    // services.AddScoped<IService, Service>()
+                $@"Register.*{Regex.Escape(className)}",     // container.Register<Service>()
+                $@"Bind.*{Regex.Escape(className)}",        // kernel.Bind<Service>()
             };
             
             foreach (var pattern in classUsagePatterns)
@@ -778,6 +825,19 @@ public class CodeAnalyzer
                 if (Regex.IsMatch(codeWithoutDeclarations, pattern, RegexOptions.IgnoreCase))
                 {
                     usedClasses.Add(className);
+                    
+                    // If this is an interface being used, mark its implementations as used too
+                    if (interfaceImplementations.ContainsKey(className))
+                    {
+                        foreach (var implementation in interfaceImplementations[className])
+                        {
+                            usedClasses.Add(implementation);
+                            if (_verbose)
+                            {
+                                Console.WriteLine($"    Interface {className} is used, marking implementation {implementation} as USED");
+                            }
+                        }
+                    }
                     break;
                 }
             }
@@ -791,8 +851,11 @@ public class CodeAnalyzer
             var methodUsagePatterns = new[]
             {
                 $@"\b{Regex.Escape(methodName)}\s*\(",      // methodName()
-                $@"\.{Regex.Escape(methodName)}\s*\(",     // .methodName()
+                $@"\.{Regex.Escape(methodName)}\s*\(",     // .methodName() - extension method calls
                 $@"\b{Regex.Escape(methodName)}\s*;",      // delegate reference
+                $@"=>\s*{Regex.Escape(methodName)}\s*\(",  // lambda expression
+                $@"\w+\.{Regex.Escape(methodName)}\s*\(",  // object.ExtensionMethod() - specific for extension methods
+                $@"\.{Regex.Escape(methodName)}\(",        // .ExtensionMethod( - without space
             };
             
             foreach (var pattern in methodUsagePatterns)
@@ -1019,6 +1082,7 @@ public class CodeAnalyzer
         // Collect all declared classes and methods across ALL projects
         var allDeclaredClasses = new Dictionary<string, (string filePath, int lineNumber, string projectPath)>();
         var allDeclaredMethods = new Dictionary<string, (string filePath, int lineNumber, string accessibility, string projectPath)>();
+        var interfaceImplementations = new Dictionary<string, List<string>>(); // interface -> list of implementations
         
         // First pass: collect all declarations from all projects
         foreach (var kvp in allSourceCode)
@@ -1030,8 +1094,8 @@ public class CodeAnalyzer
             // Find which project this file belongs to
             var projectPath = allProjectResults.FirstOrDefault(p => filePath.StartsWith(Path.GetDirectoryName(p.ProjectPath)!))?.ProjectPath ?? "Unknown";
             
-            // Find class declarations
-            var classRegex = new Regex(@"(public|internal|private|protected)?\s+class\s+(\w+)", RegexOptions.Compiled);
+            // Find class declarations and their interfaces
+            var classRegex = new Regex(@"(public|internal|private|protected)?\s+class\s+(\w+)(?:\s*:\s*([^{]+))?", RegexOptions.Compiled);
             for (int i = 0; i < lines.Length; i++)
             {
                 var match = classRegex.Match(lines[i]);
@@ -1042,12 +1106,35 @@ public class CodeAnalyzer
                     if (!allDeclaredClasses.ContainsKey(key))
                     {
                         allDeclaredClasses[key] = (filePath, i + 1, projectPath);
+                        
+                        // Check if this class implements interfaces
+                        if (match.Groups[3].Success)
+                        {
+                            var inheritanceList = match.Groups[3].Value;
+                            var interfaces = inheritanceList.Split(',')
+                                .Select(s => s.Trim())
+                                .Where(s => s.StartsWith("I") && char.IsUpper(s[1])); // Interface naming convention
+                            
+                            foreach (var interfaceName in interfaces)
+                            {
+                                if (!interfaceImplementations.ContainsKey(interfaceName))
+                                {
+                                    interfaceImplementations[interfaceName] = new List<string>();
+                                }
+                                interfaceImplementations[interfaceName].Add(className);
+                                
+                                if (_verbose)
+                                {
+                                    Console.WriteLine($"    Found implementation: {className} implements {interfaceName}");
+                                }
+                            }
+                        }
                     }
                 }
             }
             
             // Find method declarations
-            var methodRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)", RegexOptions.Compiled);
+            var methodRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+(?:<[^>]+>)?\s+)?(\w+)(?:<[^>]+>)?\s*\([^)]*\)", RegexOptions.Compiled);
             for (int i = 0; i < lines.Length; i++)
             {
                 var match = methodRegex.Match(lines[i]);
@@ -1056,10 +1143,19 @@ public class CodeAnalyzer
                     var accessibility = match.Groups[1].Value;
                     var methodName = match.Groups[2].Value;
                     
+                    // Check if this is an extension method
+                    var isExtensionMethod = lines[i].Contains("this ") && lines[i].Contains("static");
+                    
+                    if (_verbose)
+                    {
+                        var methodType = isExtensionMethod ? "extension method" : "method";
+                        Console.WriteLine($"    Found {methodType}: {accessibility} {methodName} in {Path.GetFileName(filePath)}:{i + 1}");
+                    }
+                    
                     // Skip special methods
                     if (!IsSpecialMethod(methodName) && !IsKeywordOrType(methodName))
                     {
-                        var key = $"{methodName}_{accessibility}_{Path.GetFileName(filePath)}"; // Make unique per file
+                        var key = $"{methodName}_{accessibility}";
                         if (!allDeclaredMethods.ContainsKey(key))
                         {
                             allDeclaredMethods[key] = (filePath, i + 1, accessibility, projectPath);
@@ -1078,7 +1174,7 @@ public class CodeAnalyzer
         var codeWithoutDeclarations = cleanedCombinedCode;
         
         // Remove method declarations from the analysis
-        var methodDeclarationRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+\s+)?(\w+)\s*\([^)]*\)\s*\{?", RegexOptions.Compiled);
+        var methodDeclarationRegex = new Regex(@"(public|internal|private|protected)\s+(?:static\s+)?(?:async\s+)?(?:\w+(?:<[^>]+>)?\s+)?(\w+)(?:<[^>]+>)?\s*\([^)]*\)\s*\{?", RegexOptions.Compiled);
         codeWithoutDeclarations = methodDeclarationRegex.Replace(codeWithoutDeclarations, "");
         
         // Remove class declarations too
@@ -1088,6 +1184,20 @@ public class CodeAnalyzer
         // Second pass: check usage across ALL projects
         var usedClasses = new HashSet<string>();
         var usedMethods = new HashSet<string>();
+        
+        // Mark framework-related classes as used (they're typically instantiated by frameworks)
+        foreach (var classKey in allDeclaredClasses.Keys)
+        {
+            var className = classKey.Split('_')[0];
+            if (IsFrameworkClass(className))
+            {
+                usedClasses.Add(classKey);
+                if (_verbose)
+                {
+                    Console.WriteLine($"    Framework class {className} marked as USED (framework pattern)");
+                }
+            }
+        }
         
         // Analyze class usage patterns
         foreach (var classKey in allDeclaredClasses.Keys)
@@ -1105,6 +1215,10 @@ public class CodeAnalyzer
                 $@"\b{Regex.Escape(className)}\.",          // static access
                 $@"I{Regex.Escape(className)}\b",           // Interface reference (IClassName)
                 $@"{Regex.Escape(className)}\s*>",          // Generic constraint
+                // Dependency Injection patterns
+                $@"Add\w*<.*{Regex.Escape(className)}>",    // services.AddScoped<IService, Service>()
+                $@"Register.*{Regex.Escape(className)}",     // container.Register<Service>()
+                $@"Bind.*{Regex.Escape(className)}",        // kernel.Bind<Service>()
             };
             
             foreach (var pattern in classUsagePatterns)
@@ -1112,6 +1226,21 @@ public class CodeAnalyzer
                 if (Regex.IsMatch(codeWithoutDeclarations, pattern, RegexOptions.IgnoreCase))
                 {
                     usedClasses.Add(classKey);
+                    
+                    // If this is an interface being used, mark its implementations as used too
+                    if (interfaceImplementations.ContainsKey(className))
+                    {
+                        foreach (var implementation in interfaceImplementations[className])
+                        {
+                            var implKey = $"{implementation}_{Path.GetFileName(allDeclaredClasses.FirstOrDefault(kvp => kvp.Key.StartsWith(implementation)).Value.filePath ?? "")}";
+                            usedClasses.Add(implKey);
+                            if (_verbose)
+                            {
+                                Console.WriteLine($"    Interface {className} is used, marking implementation {implementation} as USED");
+                            }
+                        }
+                    }
+                    
                     if (_verbose)
                     {
                         Console.WriteLine($"    Class {className} marked as USED (cross-project)");
@@ -1130,9 +1259,11 @@ public class CodeAnalyzer
             var methodUsagePatterns = new[]
             {
                 $@"\b{Regex.Escape(methodName)}\s*\(",      // methodName()
-                $@"\.{Regex.Escape(methodName)}\s*\(",     // .methodName()
+                $@"\.{Regex.Escape(methodName)}\s*\(",     // .methodName() - extension method calls
                 $@"\b{Regex.Escape(methodName)}\s*;",      // delegate reference
                 $@"=>\s*{Regex.Escape(methodName)}\s*\(",  // lambda expression
+                $@"\w+\.{Regex.Escape(methodName)}\s*\(",  // object.ExtensionMethod() - specific for extension methods
+                $@"\.{Regex.Escape(methodName)}\(",        // .ExtensionMethod( - without space
             };
             
             foreach (var pattern in methodUsagePatterns)
@@ -1306,5 +1437,54 @@ public class CodeAnalyzer
             }
             return false;
         }
+    }
+    
+    /// <summary>
+    /// Determines if a class follows framework patterns and should be considered as used
+    /// </summary>
+    /// <param name="className">Name of the class to check</param>
+    /// <returns>True if the class follows framework patterns</returns>
+    private bool IsFrameworkClass(string className)
+    {
+        // Common framework class patterns
+        var frameworkPatterns = new[]
+        {
+            "Controller",     // MVC/API Controllers
+            "Service",        // Services
+            "Repository",     // Repository pattern
+            "Handler",        // Command/Query handlers
+            "Middleware",     // ASP.NET middleware
+            "Filter",         // Action filters
+            "Attribute",      // Custom attributes
+            "Module",         // Modules
+            "Startup",        // Application startup
+            "Program",        // Program entry point
+            "Configuration",  // Configuration classes
+            "Options",        // Options pattern
+            "Settings",       // Settings classes
+            "Provider",       // Provider pattern
+            "Factory",        // Factory pattern
+            "Builder",        // Builder pattern
+            "Validator",      // Validation classes
+            "Mapper",         // Mapping classes
+            "Profile",        // AutoMapper profiles
+            "Hub",            // SignalR hubs
+            "Worker",         // Background workers
+            "Job",            // Background jobs
+            "Task",           // Task classes
+            "Command",        // Command pattern
+            "Query",          // Query pattern
+            "Event",          // Event classes
+            "Dto",            // Data transfer objects
+            "ViewModel",      // View models
+            "Model",          // Models
+            "Entity",         // Entity classes
+            "DbContext",      // Entity Framework contexts
+            "Migration",      // Database migrations
+        };
+        
+        return frameworkPatterns.Any(pattern => 
+            className.EndsWith(pattern, StringComparison.OrdinalIgnoreCase) ||
+            className.Contains(pattern, StringComparison.OrdinalIgnoreCase));
     }
 } 

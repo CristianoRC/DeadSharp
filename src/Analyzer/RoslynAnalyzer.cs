@@ -189,7 +189,7 @@ public class RoslynAnalyzer
             }
         }
 
-        // Collect method declarations
+        // Collect method declarations (including extension methods)
         var methodDeclarations = root.DescendantNodes().OfType<MethodDeclarationSyntax>();
         foreach (var methodDecl in methodDeclarations)
         {
@@ -244,11 +244,54 @@ public class RoslynAnalyzer
                 }
             }
 
-            // Find member access expressions
+            // Find member access expressions (including extension method calls)
             var memberAccesses = root.DescendantNodes().OfType<MemberAccessExpressionSyntax>();
             foreach (var memberAccess in memberAccesses)
             {
                 var symbolInfo = semanticModel.GetSymbolInfo(memberAccess);
+                if (symbolInfo.Symbol != null && allSymbols.Contains(symbolInfo.Symbol))
+                {
+                    usedSymbols.Add(symbolInfo.Symbol);
+                }
+            }
+
+            // Find invocation expressions (method calls, including extension methods)
+            var invocations = root.DescendantNodes().OfType<InvocationExpressionSyntax>();
+            foreach (var invocation in invocations)
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(invocation);
+                if (symbolInfo.Symbol != null && allSymbols.Contains(symbolInfo.Symbol))
+                {
+                    usedSymbols.Add(symbolInfo.Symbol);
+                    
+                    // For extension methods, also mark the method as used
+                    if (symbolInfo.Symbol is IMethodSymbol method && method.IsExtensionMethod)
+                    {
+                        usedSymbols.Add(method);
+                        if (_verbose)
+                        {
+                            Console.WriteLine($"    Found extension method usage: {method.Name} in {result.RelativePath}");
+                        }
+                    }
+                }
+            }
+
+            // Find object creation expressions
+            var objectCreations = root.DescendantNodes().OfType<ObjectCreationExpressionSyntax>();
+            foreach (var objectCreation in objectCreations)
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(objectCreation);
+                if (symbolInfo.Symbol != null && allSymbols.Contains(symbolInfo.Symbol))
+                {
+                    usedSymbols.Add(symbolInfo.Symbol);
+                }
+            }
+
+            // Find type references
+            var typeReferences = root.DescendantNodes().OfType<TypeSyntax>();
+            foreach (var typeRef in typeReferences)
+            {
+                var symbolInfo = semanticModel.GetSymbolInfo(typeRef);
                 if (symbolInfo.Symbol != null && allSymbols.Contains(symbolInfo.Symbol))
                 {
                     usedSymbols.Add(symbolInfo.Symbol);
@@ -320,7 +363,11 @@ public class RoslynAnalyzer
         // Skip constructors for now (they're often called implicitly)
         if (symbol is IMethodSymbol { MethodKind: MethodKind.Constructor }) return false;
         
-        // Skip public API members (they might be used externally)
+        // Include extension methods even if they are public (they might be dead code)
+        if (symbol is IMethodSymbol extensionMethod && extensionMethod.IsExtensionMethod)
+            return true;
+        
+        // Skip public API members (they might be used externally) - but not extension methods
         if (symbol.DeclaredAccessibility == Accessibility.Public) return false;
 
         return true;
