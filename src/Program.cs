@@ -1,9 +1,19 @@
-﻿namespace DeadSharp;
+﻿using System.CommandLine;
+using DeadSharp.Commands;
+
+namespace DeadSharp;
 
 class Program
 {
-    static void Main(string[] args)
+    static async Task<int> Main(string[] args)
     {
-        Console.WriteLine("Hello, World!");
+        var rootCommand = CommandLineOptions.CreateRootCommand();
+
+        rootCommand.SetHandler(
+            AnalyzeCommand.ExecuteAsync,
+            CommandLineOptions.ProjectPathOption, 
+            CommandLineOptions.VerboseOption);
+
+        return await rootCommand.InvokeAsync(args);
     }
 }
