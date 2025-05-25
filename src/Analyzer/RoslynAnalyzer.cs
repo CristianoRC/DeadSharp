@@ -139,7 +139,7 @@ public class RoslynAnalyzer
             var semanticModel = compilation.GetSemanticModel(syntaxTree);
             var root = await syntaxTree.GetRootAsync();
 
-            var fileResult = await AnalyzeDocumentAsync(document, semanticModel, root, allSymbols, usedSymbols);
+            var fileResult = AnalyzeDocument(document, semanticModel, root, allSymbols, usedSymbols);
             result.FileResults.Add(fileResult);
 
             result.TotalMethods += fileResult.MethodCount;
@@ -200,7 +200,7 @@ public class RoslynAnalyzer
         return symbols;
     }
 
-    private async Task<FileAnalysisResult> AnalyzeDocumentAsync(
+    private FileAnalysisResult AnalyzeDocument(
         Document document, 
         SemanticModel semanticModel, 
         SyntaxNode root,
