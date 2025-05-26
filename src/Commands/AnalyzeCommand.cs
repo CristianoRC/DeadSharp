@@ -332,31 +332,31 @@ public static class AnalyzeCommand
     {
         var sb = new StringBuilder();
         
-        sb.AppendLine("=== ANÁLISE DO DEADSHARP ===");
-        sb.AppendLine($"Data da Análise: {DateTime.Now}");
-        sb.AppendLine($"Caminho do Projeto: {result.ProjectPath}");
-        sb.AppendLine($"Duração: {result.Duration.TotalSeconds:F2} segundos");
-        sb.AppendLine($"Projetos Analisados: {result.ProjectResults.Count}");
-        sb.AppendLine($"Arquivos de Código: {result.TotalSourceFiles}");
+        sb.AppendLine("=== DEADSHARP ANALYSIS ===");
+        sb.AppendLine($"Analysis Date: {DateTime.Now}");
+        sb.AppendLine($"Project Path: {result.ProjectPath}");
+        sb.AppendLine($"Duration: {result.Duration.TotalSeconds:F2} seconds");
+        sb.AppendLine($"Projects Analyzed: {result.ProjectResults.Count}");
+        sb.AppendLine($"Source Files: {result.TotalSourceFiles}");
         sb.AppendLine();
 
-        sb.AppendLine("=== MÉTRICAS DE CÓDIGO ===");
-        sb.AppendLine($"Total de Classes: {result.TotalClasses}");
-        sb.AppendLine($"Total de Métodos: {result.TotalMethods}");
+        sb.AppendLine("=== CODE METRICS ===");
+        sb.AppendLine($"Total Classes: {result.TotalClasses}");
+        sb.AppendLine($"Total Methods: {result.TotalMethods}");
         sb.AppendLine();
 
         if (result.TotalPotentialDeadClasses > 0 || result.TotalPotentialDeadMethods > 0)
         {
-            sb.AppendLine("=== CÓDIGO MORTO DETECTADO ===");
+            sb.AppendLine("=== DEAD CODE DETECTED ===");
 
             if (result.TotalPotentialDeadClasses > 0)
             {
-                sb.AppendLine($"Classes Potencialmente Mortas: {result.TotalPotentialDeadClasses} ({result.DeadClassPercentage:F1}% de todas as classes)");
+                sb.AppendLine($"Potentially Dead Classes: {result.TotalPotentialDeadClasses} ({result.DeadClassPercentage:F1}% of all classes)");
             }
 
             if (result.TotalPotentialDeadMethods > 0)
             {
-                sb.AppendLine($"Métodos Potencialmente Mortos: {result.TotalPotentialDeadMethods} ({result.DeadMethodPercentage:F1}% de todos os métodos)");
+                sb.AppendLine($"Potentially Dead Methods: {result.TotalPotentialDeadMethods} ({result.DeadMethodPercentage:F1}% of all methods)");
             }
 
             // Detalhes dos itens de código morto
@@ -364,32 +364,32 @@ public static class AnalyzeCommand
         }
         else
         {
-            sb.AppendLine("Nenhum código morto detectado!");
+            sb.AppendLine("No dead code detected!");
         }
 
         // Detalhamento por projeto
         if (result.ProjectResults.Count > 1)
         {
             sb.AppendLine();
-            sb.AppendLine("=== DETALHAMENTO POR PROJETO ===");
+            sb.AppendLine("=== PROJECT DETAILS ===");
 
             foreach (var projectResult in result.ProjectResults)
             {
                 sb.AppendLine($"- {Path.GetFileName(projectResult.ProjectPath)}:");
-                sb.AppendLine($"  - Arquivos de Código: {projectResult.SourceFileCount}");
+                sb.AppendLine($"  - Source Files: {projectResult.SourceFileCount}");
                 sb.AppendLine($"  - Classes: {projectResult.TotalClasses}");
-                sb.AppendLine($"  - Métodos: {projectResult.TotalMethods}");
+                sb.AppendLine($"  - Methods: {projectResult.TotalMethods}");
 
                 if (projectResult.PotentialDeadClasses > 0 || projectResult.PotentialDeadMethods > 0)
                 {
                     if (projectResult.PotentialDeadClasses > 0)
                     {
-                        sb.AppendLine($"  - Classes Potencialmente Mortas: {projectResult.PotentialDeadClasses}");
+                        sb.AppendLine($"  - Potentially Dead Classes: {projectResult.PotentialDeadClasses}");
                     }
 
                     if (projectResult.PotentialDeadMethods > 0)
                     {
-                        sb.AppendLine($"  - Métodos Potencialmente Mortos: {projectResult.PotentialDeadMethods}");
+                        sb.AppendLine($"  - Potentially Dead Methods: {projectResult.PotentialDeadMethods}");
                     }
                 }
             }
@@ -423,7 +423,7 @@ public static class AnalyzeCommand
             return;
 
         sb.AppendLine();
-        sb.AppendLine("=== DETALHES DO CÓDIGO MORTO ===");
+        sb.AppendLine("=== DEAD CODE DETAILS ===");
 
         // Agrupar por nível de confiança para melhor apresentação
         var highConfidence = allDeadItems.Where(x => x.Item.ConfidencePercentage >= 80).ToList();
@@ -433,26 +433,26 @@ public static class AnalyzeCommand
         if (highConfidence.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine($"ALTA CONFIANÇA ({highConfidence.Count} itens):");
+            sb.AppendLine($"HIGH CONFIDENCE ({highConfidence.Count} items):");
             AppendDeadCodeItemGroup(sb, highConfidence);
         }
 
         if (mediumConfidence.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine($"MÉDIA CONFIANÇA ({mediumConfidence.Count} itens):");
+            sb.AppendLine($"MEDIUM CONFIDENCE ({mediumConfidence.Count} items):");
             AppendDeadCodeItemGroup(sb, mediumConfidence);
         }
 
         if (lowConfidence.Count > 0)
         {
             sb.AppendLine();
-            sb.AppendLine($"BAIXA CONFIANÇA ({lowConfidence.Count} itens):");
+            sb.AppendLine($"LOW CONFIDENCE ({lowConfidence.Count} items):");
             AppendDeadCodeItemGroup(sb, lowConfidence);
         }
         
         sb.AppendLine();
-        sb.AppendLine("Dica: Revise primeiro os itens de alta confiança. Itens de baixa confiança podem ser falsos positivos.");
+        sb.AppendLine("Tip: Review high confidence items first. Low confidence items may be false positives.");
     }
     
     private static void AppendDeadCodeItemGroup(StringBuilder sb, List<(string FilePath, DeadCodeItem Item)> items)
@@ -468,17 +468,17 @@ public static class AnalyzeCommand
             {
                 string typeLabel = item.Type switch
                 {
-                    "Method" => "Método",
-                    "Class" => "Classe",
-                    "Property" => "Propriedade",
-                    "Field" => "Campo",
-                    _ => "Desconhecido"
+                    "Method" => "Method",
+                    "Class" => "Class",
+                    "Property" => "Property",
+                    "Field" => "Field",
+                    _ => "Unknown"
                 };
 
                 sb.AppendLine($"    [{item.Type[0]}] {typeLabel}: {item.Name}");
-                sb.AppendLine($"       Linha {item.LineNumber}, Coluna {item.ColumnNumber}");
-                sb.AppendLine($"       Confiança: {item.ConfidencePercentage}%");
-                sb.AppendLine($"       Razão: {item.Reason}");
+                sb.AppendLine($"       Line {item.LineNumber}, Column {item.ColumnNumber}");
+                sb.AppendLine($"       Confidence: {item.ConfidencePercentage}%");
+                sb.AppendLine($"       Reason: {item.Reason}");
                 sb.AppendLine();
             }
         }

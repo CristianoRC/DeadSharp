@@ -9,7 +9,7 @@
         <ToolCommandName>deadsharp</ToolCommandName>
         <PackageOutputPath>./nupkg</PackageOutputPath>
         <!-- Update this version before creating a new release tag -->
-        <Version>0.1.1</Version>
+        <Version>0.2.0</Version>
         <Authors>DeadSharp Team</Authors>
         <Description>A tool for analyzing C# projects to identify dead code</Description>
         <PackageId>DeadSharp</PackageId>

@@ -225,7 +225,7 @@ public static class CommandLineOptions
     {
         var option = new Option<string>(
             name: "--format",
-            description: "Formato de saída dos resultados (JSON ou TXT). Padrão é console se nenhum formato for especificado.",
+            description: "Output format for results (JSON or TXT). Default is console if no format is specified.",
             getDefaultValue: () => "console")
         {
             IsRequired = false
@@ -242,7 +242,7 @@ public static class CommandLineOptions
                 format.ToUpperInvariant() != "TXT" &&
                 format.ToUpperInvariant() != "CONSOLE")
             {
-                result.ErrorMessage = "O formato deve ser JSON, TXT ou CONSOLE";
+                result.ErrorMessage = "Format must be JSON, TXT or CONSOLE";
             }
         });
         
