@@ -48,9 +48,14 @@ public static class CommandLineOptions
     public static Option<bool> EnhancedDataFlow { get; } = CreateEnhancedDataFlowOption();
     
     /// <summary>
-    /// Option for specifying the output path for JSON results
+    /// Option for specifying the output path for results
     /// </summary>
     public static Option<string> OutputPath { get; } = CreateOutputPathOption();
+    
+    /// <summary>
+    /// Option for specifying the output format (JSON or TXT)
+    /// </summary>
+    public static Option<string> OutputFormat { get; } = CreateOutputFormatOption();
     
     /// <summary>
     /// Creates and configures the root command with all options
@@ -69,6 +74,7 @@ public static class CommandLineOptions
         rootCommand.AddOption(EnhancedDiDetection);
         rootCommand.AddOption(EnhancedDataFlow);
         rootCommand.AddOption(OutputPath);
+        rootCommand.AddOption(OutputFormat);
         
         return rootCommand;
     }
@@ -211,6 +217,34 @@ public static class CommandLineOptions
         };
         
         option.AddAlias("-o");
+        
+        return option;
+    }
+    
+    private static Option<string> CreateOutputFormatOption()
+    {
+        var option = new Option<string>(
+            name: "--format",
+            description: "Formato de saída dos resultados (JSON ou TXT). Padrão é console se nenhum formato for especificado.",
+            getDefaultValue: () => "console")
+        {
+            IsRequired = false
+        };
+        
+        option.AddAlias("-f");
+        
+        // Adicionando validação para aceitar apenas JSON ou TXT
+        option.AddValidator(result =>
+        {
+            var format = result.GetValueForOption(option);
+            if (!string.IsNullOrEmpty(format) && 
+                format.ToUpperInvariant() != "JSON" && 
+                format.ToUpperInvariant() != "TXT" &&
+                format.ToUpperInvariant() != "CONSOLE")
+            {
+                result.ErrorMessage = "O formato deve ser JSON, TXT ou CONSOLE";
+            }
+        });
         
         return option;
     }

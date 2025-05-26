@@ -20,9 +20,11 @@ class Program
             var enhancedDiDetection = context.ParseResult.GetValueForOption(CommandLineOptions.EnhancedDiDetection);
             var enhancedDataFlow = context.ParseResult.GetValueForOption(CommandLineOptions.EnhancedDataFlow);
             var outputPath = context.ParseResult.GetValueForOption(CommandLineOptions.OutputPath);
+            var outputFormat = context.ParseResult.GetValueForOption(CommandLineOptions.OutputFormat);
 
             await AnalyzeCommand.ExecuteAsync(projectPath, verbose, ignoreTests, ignoreMigrations, 
-                ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, enhancedDataFlow, outputPath);
+                ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, enhancedDataFlow, 
+                outputPath, outputFormat);
         });
 
         return await rootCommand.InvokeAsync(args);

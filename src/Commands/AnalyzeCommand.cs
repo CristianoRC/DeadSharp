@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using System.Text;
 using DeadSharp.Analyzer;
 
 namespace DeadSharp.Commands;
@@ -20,10 +21,12 @@ public static class AnalyzeCommand
     /// <param name="ignoreControllers">Whether to ignore Controller files during analysis</param>
     /// <param name="enhancedDiDetection">Whether to enable enhanced dependency injection detection</param>
     /// <param name="enhancedDataFlow">Whether to enable enhanced data flow analysis</param>
-    /// <param name="outputPath">Optional path to save the analysis results in JSON format</param>
+    /// <param name="outputPath">Optional path to save the analysis results</param>
+    /// <param name="outputFormat">Format of the output (JSON or TXT)</param>
     public static async Task ExecuteAsync(string projectPath, bool verbose, bool ignoreTests = false, 
         bool ignoreMigrations = false, bool ignoreAzureFunctions = false, bool ignoreControllers = false,
-        bool enhancedDiDetection = false, bool enhancedDataFlow = false, string? outputPath = null)
+        bool enhancedDiDetection = false, bool enhancedDataFlow = false, string? outputPath = null,
+        string? outputFormat = "console")
     {
         try
         {
@@ -58,10 +61,12 @@ public static class AnalyzeCommand
                 if (!string.IsNullOrEmpty(outputPath))
                 {
                     Console.WriteLine($"Results will be saved to: {outputPath}");
+                    Console.WriteLine($"Output format: {outputFormat?.ToUpperInvariant() ?? "CONSOLE"}");
                 }
             }
 
-            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, enhancedDataFlow, outputPath);
+            await AnalyzeProjectAsync(projectPath, verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, 
+                ignoreControllers, enhancedDiDetection, enhancedDataFlow, outputPath, outputFormat);
         }
         catch (Exception ex)
         {
@@ -76,7 +81,7 @@ public static class AnalyzeCommand
 
     private static async Task AnalyzeProjectAsync(string projectPath, bool verbose, bool ignoreTests, 
         bool ignoreMigrations, bool ignoreAzureFunctions, bool ignoreControllers, bool enhancedDiDetection,
-        bool enhancedDataFlow, string? outputPath)
+        bool enhancedDataFlow, string? outputPath, string? outputFormat)
     {
         var analyzer = new CodeAnalyzer(verbose, ignoreTests, ignoreMigrations, ignoreAzureFunctions, ignoreControllers, enhancedDiDetection, enhancedDataFlow);
 
@@ -89,29 +94,45 @@ public static class AnalyzeCommand
 
         if (result.Success)
         {
-            Console.WriteLine();
-            Console.ForegroundColor = ConsoleColor.Green;
-            Console.WriteLine("Analysis completed successfully!");
-            Console.ResetColor();
-            Console.WriteLine();
-
-            PrintAnalysisResults(result);
-
-            if (!string.IsNullOrEmpty(outputPath))
+            // Se não estiver salvando em arquivo ou se o formato for console, exibe no console
+            if (string.IsNullOrEmpty(outputPath) || string.Equals(outputFormat, "console", StringComparison.OrdinalIgnoreCase))
             {
+                Console.WriteLine();
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("Analysis completed successfully!");
+                Console.ResetColor();
+                Console.WriteLine();
+
+                PrintAnalysisResults(result);
+            }
+            else
+            {
+                // Caso contrário, salva no arquivo com o formato especificado
                 try
                 {
-                    var jsonOptions = new JsonSerializerOptions
-                    {
-                        WriteIndented = true
-                    };
+                    string formattedOutput;
+                    outputFormat = outputFormat?.ToUpperInvariant() ?? "JSON";
                     
-                    var json = JsonSerializer.Serialize(result, jsonOptions);
-                    await File.WriteAllTextAsync(outputPath, json);
+                    if (outputFormat == "JSON")
+                    {
+                        var jsonOptions = new JsonSerializerOptions
+                        {
+                            WriteIndented = true
+                        };
+                        
+                        formattedOutput = JsonSerializer.Serialize(result, jsonOptions);
+                    }
+                    else // TXT
+                    {
+                        formattedOutput = GenerateTextReport(result);
+                    }
+                    
+                    await File.WriteAllTextAsync(outputPath, formattedOutput);
                     
                     Console.WriteLine();
                     Console.ForegroundColor = ConsoleColor.Green;
-                    Console.WriteLine($"Results saved to: {outputPath}");
+                    Console.WriteLine($"Analysis completed successfully!");
+                    Console.WriteLine($"Results saved to: {outputPath} (Format: {outputFormat})");
                     Console.ResetColor();
                 }
                 catch (Exception ex)
@@ -302,6 +323,163 @@ public static class AnalyzeCommand
                 Console.WriteLine($"       {(isWindows ? "Confidence" : "🎯 Confidence")}: {item.ConfidencePercentage}%");
                 Console.WriteLine($"       {(isWindows ? "Reason" : "💭")} {item.Reason}");
                 Console.WriteLine();
+            }
+        }
+    }
+
+    // Gera relatório em formato texto
+    private static string GenerateTextReport(AnalysisResult result)
+    {
+        var sb = new StringBuilder();
+        
+        sb.AppendLine("=== ANÁLISE DO DEADSHARP ===");
+        sb.AppendLine($"Data da Análise: {DateTime.Now}");
+        sb.AppendLine($"Caminho do Projeto: {result.ProjectPath}");
+        sb.AppendLine($"Duração: {result.Duration.TotalSeconds:F2} segundos");
+        sb.AppendLine($"Projetos Analisados: {result.ProjectResults.Count}");
+        sb.AppendLine($"Arquivos de Código: {result.TotalSourceFiles}");
+        sb.AppendLine();
+
+        sb.AppendLine("=== MÉTRICAS DE CÓDIGO ===");
+        sb.AppendLine($"Total de Classes: {result.TotalClasses}");
+        sb.AppendLine($"Total de Métodos: {result.TotalMethods}");
+        sb.AppendLine();
+
+        if (result.TotalPotentialDeadClasses > 0 || result.TotalPotentialDeadMethods > 0)
+        {
+            sb.AppendLine("=== CÓDIGO MORTO DETECTADO ===");
+
+            if (result.TotalPotentialDeadClasses > 0)
+            {
+                sb.AppendLine($"Classes Potencialmente Mortas: {result.TotalPotentialDeadClasses} ({result.DeadClassPercentage:F1}% de todas as classes)");
+            }
+
+            if (result.TotalPotentialDeadMethods > 0)
+            {
+                sb.AppendLine($"Métodos Potencialmente Mortos: {result.TotalPotentialDeadMethods} ({result.DeadMethodPercentage:F1}% de todos os métodos)");
+            }
+
+            // Detalhes dos itens de código morto
+            AppendDeadCodeDetails(sb, result);
+        }
+        else
+        {
+            sb.AppendLine("Nenhum código morto detectado!");
+        }
+
+        // Detalhamento por projeto
+        if (result.ProjectResults.Count > 1)
+        {
+            sb.AppendLine();
+            sb.AppendLine("=== DETALHAMENTO POR PROJETO ===");
+
+            foreach (var projectResult in result.ProjectResults)
+            {
+                sb.AppendLine($"- {Path.GetFileName(projectResult.ProjectPath)}:");
+                sb.AppendLine($"  - Arquivos de Código: {projectResult.SourceFileCount}");
+                sb.AppendLine($"  - Classes: {projectResult.TotalClasses}");
+                sb.AppendLine($"  - Métodos: {projectResult.TotalMethods}");
+
+                if (projectResult.PotentialDeadClasses > 0 || projectResult.PotentialDeadMethods > 0)
+                {
+                    if (projectResult.PotentialDeadClasses > 0)
+                    {
+                        sb.AppendLine($"  - Classes Potencialmente Mortas: {projectResult.PotentialDeadClasses}");
+                    }
+
+                    if (projectResult.PotentialDeadMethods > 0)
+                    {
+                        sb.AppendLine($"  - Métodos Potencialmente Mortos: {projectResult.PotentialDeadMethods}");
+                    }
+                }
+            }
+        }
+        
+        return sb.ToString();
+    }
+    
+    private static void AppendDeadCodeDetails(StringBuilder sb, AnalysisResult result)
+    {
+        var allDeadItems = new List<(string FilePath, DeadCodeItem Item)>();
+
+        // Coletar todos os itens de código morto de todos os projetos e arquivos
+        foreach (var projectResult in result.ProjectResults)
+        {
+            foreach (var fileResult in projectResult.FileResults)
+            {
+                foreach (var deadMethod in fileResult.DeadMethods)
+                {
+                    allDeadItems.Add((fileResult.RelativePath, deadMethod));
+                }
+
+                foreach (var deadClass in fileResult.DeadClasses)
+                {
+                    allDeadItems.Add((fileResult.RelativePath, deadClass));
+                }
+            }
+        }
+
+        if (allDeadItems.Count == 0)
+            return;
+
+        sb.AppendLine();
+        sb.AppendLine("=== DETALHES DO CÓDIGO MORTO ===");
+
+        // Agrupar por nível de confiança para melhor apresentação
+        var highConfidence = allDeadItems.Where(x => x.Item.ConfidencePercentage >= 80).ToList();
+        var mediumConfidence = allDeadItems.Where(x => x.Item.ConfidencePercentage >= 60 && x.Item.ConfidencePercentage < 80).ToList();
+        var lowConfidence = allDeadItems.Where(x => x.Item.ConfidencePercentage < 60).ToList();
+
+        if (highConfidence.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"ALTA CONFIANÇA ({highConfidence.Count} itens):");
+            AppendDeadCodeItemGroup(sb, highConfidence);
+        }
+
+        if (mediumConfidence.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"MÉDIA CONFIANÇA ({mediumConfidence.Count} itens):");
+            AppendDeadCodeItemGroup(sb, mediumConfidence);
+        }
+
+        if (lowConfidence.Count > 0)
+        {
+            sb.AppendLine();
+            sb.AppendLine($"BAIXA CONFIANÇA ({lowConfidence.Count} itens):");
+            AppendDeadCodeItemGroup(sb, lowConfidence);
+        }
+        
+        sb.AppendLine();
+        sb.AppendLine("Dica: Revise primeiro os itens de alta confiança. Itens de baixa confiança podem ser falsos positivos.");
+    }
+    
+    private static void AppendDeadCodeItemGroup(StringBuilder sb, List<(string FilePath, DeadCodeItem Item)> items)
+    {
+        // Agrupar por arquivo para melhor organização
+        var groupedByFile = items.GroupBy(x => x.FilePath).OrderBy(g => g.Key);
+
+        foreach (var fileGroup in groupedByFile)
+        {
+            sb.AppendLine($"  [DIR] {fileGroup.Key}");
+
+            foreach (var (_, item) in fileGroup.OrderBy(x => x.Item.LineNumber))
+            {
+                string typeLabel = item.Type switch
+                {
+                    "Method" => "Método",
+                    "Class" => "Classe",
+                    "Property" => "Propriedade",
+                    "Field" => "Campo",
+                    _ => "Desconhecido"
+                };
+
+                sb.AppendLine($"    [{item.Type[0]}] {typeLabel}: {item.Name}");
+                sb.AppendLine($"       Linha {item.LineNumber}, Coluna {item.ColumnNumber}");
+                sb.AppendLine($"       Confiança: {item.ConfidencePercentage}%");
+                sb.AppendLine($"       Razão: {item.Reason}");
+                sb.AppendLine();
             }
         }
     }
