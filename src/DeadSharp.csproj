@@ -17,7 +17,7 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageProjectUrl>https://github.com/cristianorc/DeadSharp</PackageProjectUrl>
-        <RepositoryUrl>https://github.com/cristianorc/DeadSharp.git</RepositoryUrl>
+        <RepositoryUrl>https://github.com/cristianorc/DeadSharp</RepositoryUrl>
         <RepositoryType>git</RepositoryType>
         <PackageIcon>icon.png</PackageIcon>
     </PropertyGroup>
