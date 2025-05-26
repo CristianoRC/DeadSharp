@@ -267,34 +267,40 @@ public static class AnalyzeCommand
             PrintDeadCodeItemGroup(lowConfidence);
         }
 
+        // Verificar se estamos executando no Windows
+        bool isWindows = OperatingSystem.IsWindows();
+        
         Console.WriteLine();
-        Console.WriteLine("💡 Tip: Review high confidence items first. Low confidence items may be false positives.");
+        Console.WriteLine($"{(isWindows ? "Tip" : "💡 Tip")}: Review high confidence items first. Low confidence items may be false positives.");
     }
 
     private static void PrintDeadCodeItemGroup(List<(string FilePath, DeadCodeItem Item)> items)
     {
         // Group by file for better organization
         var groupedByFile = items.GroupBy(x => x.FilePath).OrderBy(g => g.Key);
+        
+        // Verificar se estamos executando no Windows
+        bool isWindows = OperatingSystem.IsWindows();
 
         foreach (var fileGroup in groupedByFile)
         {
-            Console.WriteLine($"  📁 {fileGroup.Key}");
+            Console.WriteLine($"  {(isWindows ? "[DIR]" : "📁")} {fileGroup.Key}");
 
             foreach (var (_, item) in fileGroup.OrderBy(x => x.Item.LineNumber))
             {
-                var icon = item.Type switch
+                string icon = item.Type switch
                 {
-                    "Method" => "🔧",
-                    "Class" => "📦",
-                    "Property" => "🏷️",
-                    "Field" => "📋",
-                    _ => "❓"
+                    "Method" => isWindows ? "[M]" : "🔧",
+                    "Class" => isWindows ? "[C]" : "📦",
+                    "Property" => isWindows ? "[P]" : "🏷️",
+                    "Field" => isWindows ? "[F]" : "📋",
+                    _ => isWindows ? "[?]" : "❓"
                 };
 
                 Console.WriteLine($"    {icon} {item.Type}: {item.Name}");
-                Console.WriteLine($"       📍 Line {item.LineNumber}, Column {item.ColumnNumber}");
-                Console.WriteLine($"       🎯 Confidence: {item.ConfidencePercentage}%");
-                Console.WriteLine($"       💭 {item.Reason}");
+                Console.WriteLine($"       {(isWindows ? "Line" : "📍 Line")} {item.LineNumber}, Column {item.ColumnNumber}");
+                Console.WriteLine($"       {(isWindows ? "Confidence" : "🎯 Confidence")}: {item.ConfidencePercentage}%");
+                Console.WriteLine($"       {(isWindows ? "Reason" : "💭")} {item.Reason}");
                 Console.WriteLine();
             }
         }
