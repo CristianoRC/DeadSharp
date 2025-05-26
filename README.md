@@ -6,7 +6,7 @@ DeadSharp is a command-line tool for analyzing C# projects and identifying dead 
 
 ## Installation
 
-### From NuGet (not published yet)
+### From NuGet
 ```bash
 dotnet tool install --global DeadSharp
 ```
@@ -19,6 +19,13 @@ dotnet tool install --global DeadSharp
    dotnet pack
    dotnet tool install --global --add-source ./nupkg DeadSharp
    ```
+
+## Updating to the Latest Version
+
+### From NuGet
+```bash
+dotnet tool update --global DeadSharp
+```
 
 ## Usage
 
@@ -207,9 +214,9 @@ public class UserController : ControllerBase
 
 With `--enhanced-di-detection`, the tool will correctly identify that `EmailService` is used through the DI container and won't mark it as dead code.
 
-#### Enhanced Data Flow Analysis (`--enhanced-dataflow` / `-edf`) 🆕
+#### Enhanced Data Flow Analysis (`--enhanced-dataflow` / `-edf`)
 
-**NEW FEATURE**: Advanced semantic data flow analysis that significantly reduces false positives by tracking complex usage patterns that basic static analysis might miss. This feature uses deep code analysis to understand how classes and methods are used through indirect references, complex control flows, and sophisticated programming patterns.
+Advanced semantic data flow analysis that significantly reduces false positives by tracking complex usage patterns that basic static analysis might miss. This feature uses deep code analysis to understand how classes and methods are used through indirect references, complex control flows, and sophisticated programming patterns.
 
 Use the `--enhanced-dataflow` option to enable advanced semantic analysis:
 
@@ -308,7 +315,7 @@ var repo = new Repository<MyEntity>(); // ✅ MyEntity marked as used
   - ✅ Ignore Azure Functions (`--ignore-azure-functions`)
   - ✅ Ignore Controllers (`--ignore-controllers`)
 - ✅ Enhanced dependency injection detection (`--enhanced-di-detection`)
-- ✅ **NEW**: Enhanced data flow analysis (`--enhanced-dataflow`) - Advanced semantic analysis capabilities
+- ✅ Enhanced data flow analysis (`--enhanced-dataflow`) - Advanced semantic analysis capabilities
 - ✅ Short aliases for all options
 - ✅ Modular and extensible architecture
 - ✅ Both Roslyn-based semantic analysis and fallback regex analysis
