@@ -1,4 +1,4 @@
-name: Build e Publicar no NuGet
+name: Build and Publish to NuGet
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       with:
         dotnet-version: 9.0.x
     
-    - name: Restaurar dependências
+    - name: Restore dependencies
       run: dotnet restore src/DeadSharp.sln
     
     - name: Build
@@ -41,20 +41,20 @@ jobs:
       with:
         dotnet-version: 9.0.x
     
-    - name: Restaurar dependências
+    - name: Restore dependencies
       run: dotnet restore src/DeadSharp.sln
     
     - name: Build
       run: dotnet build src/DeadSharp.sln --configuration Release --no-restore
     
-    - name: Criar pacote NuGet
+    - name: Create NuGet package
       run: dotnet pack src/DeadSharp.csproj --configuration Release --output ./nupkg
     
-    - name: Publicar no NuGet.org
+    - name: Publish to NuGet.org
       run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
       
-    - name: Configurar GitHub Packages
+    - name: Configure GitHub Packages
       run: dotnet nuget add source --username ${{ github.actor }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
       
-    - name: Publicar no GitHub Packages
+    - name: Publish to GitHub Packages
       run: dotnet nuget push ./nupkg/*.nupkg --source github --api-key ${{ secrets.GITHUB_TOKEN }} --skip-duplicate 
