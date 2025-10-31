@@ -1,7 +1,8 @@
-# DeadSharp
+# DeadSharp 🪦
 
 
-[![Build and Publish to NuGet](https://github.com/CristianoRC/DeadSharp/actions/workflows/publish.yml/badge.svg)](https://github.com/CristianoRC/DeadSharp/actions/workflows/publish.yml) ![NuGet Version](https://img.shields.io/nuget/v/DeadSharp?logo=nuget&color=blue)
+[![NuGet Version](https://img.shields.io/nuget/v/DeadSharp?logo=nuget&color=blue)](https://www.nuget.org/packages/DeadSharp) [![Build and Publish to NuGet](https://github.com/CristianoRC/DeadSharp/actions/workflows/publish.yml/badge.svg)](https://github.com/CristianoRC/DeadSharp/actions/workflows/publish.yml) 
+
 
 
 DeadSharp is a command-line tool for analyzing C# projects and identifying dead code.
